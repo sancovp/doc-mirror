@@ -1,0 +1,34 @@
+─────────────────────────────────────────────────────────────────────────────
+🌾 HARVEST CHECKPOINT (shown every 10 turns) — did you learn a reusable RULE or SKILL?
+This is how the system compounds. Emit it NOW, the moment you notice it, with a `cat`.
+
+A RULE = something you must be aware of ALL the time while in this repo (an invariant):
+  mkdir -p <repo>/.claude/rules && cat > <repo>/.claude/rules/<kebab-slug>.md <<'EOF'
+  # <Title>
+  <the invariant, imperative — what must always/never happen>
+  EOF
+  (auto-injects every turn while in this repo)
+
+A SKILL = something you invoke CONDITIONALLY while in this repo (a procedure for a recurring situation):
+  mkdir -p <repo>/.claude/skills/<kebab-name> && cat > <repo>/.claude/skills/<kebab-name>/SKILL.md <<'EOF'
+  ---
+  name: <kebab-name>
+  description: <WHEN to use it — the trigger condition>
+  ---
+  # <name>
+  <the procedure>
+  EOF
+
+GLOBAL (rare — only if TRULY universal across ALL repos, not just this one):
+  rule  → ~/.claude/rules/<slug>.md
+  skill → $HEAVEN_DATA_DIR/skills/<name>/SKILL.md  AND add "<name>" to $HEAVEN_DATA_DIR/skills/_defaults.json (else sync wipes it)
+  Default to repo-local. Go global only when you are certain it applies everywhere.
+
+AFTER you write a rule or skill: REFINE it with the `meta-prompt-engineering` skill — check the
+wording theoretically (is the trigger/condition unambiguous? does every fragment only read as a
+command in the correct direction? does it lose information?) and tighten it. A harvested artifact
+is only as good as its prompt engineering; the meta-prompt-engineering pass is what makes the
+compounding actually compound instead of accreting sloppy files.
+
+Nothing to harvest this checkpoint? Fine — carry on. But check honestly first.
+─────────────────────────────────────────────────────────────────────────────

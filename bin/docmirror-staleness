@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""
+docmirror-staleness — enforce the anti-drift invariant: a module file must NEVER be newer than its
+doc(m). If a module's source was edited after its impl-doc was last re-derived, the doc is STALE — the
+code changed without the doc(m) being updated to match. This makes that condition VISIBLE/blocking
+instead of silent (Isaac: "should be impossible for any file to be edited without being followed by an
+impl-doc edit for the module it is in afterwards — the program must be doing this").
+
+For each doc(m) at <repo>/docs/mirror/<relpath>.md, the mirrored source is <repo>/<relpath>. If the
+source exists and its mtime > the doc(m) mtime → STALE. (A doc with no source = orphan; a source with
+no doc = a missing-doc gap — both reported too.)
+
+Usage:
+  docmirror-staleness [repo]     check one repo (registry name / monorepo-relpath / path); default = the
+                                 cursor's active_repo, else the whole monorepo
+  docmirror-staleness --all      check every repo under the monorepo that has a docs/mirror/
+Exit 1 if any STALE doc is found (so it can gate a commit / closure test / hook).
+
+Repo root (no hardcoded path): $DOCMIRROR_MONOREPO / ~/.docmirror_root / git toplevel / cwd.
+"""
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def _monorepo() -> Path:
+    e = os.environ.get("DOCMIRROR_MONOREPO")
+    if e:
+        return Path(e)
+    cfg = Path.home() / ".docmirror_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            return Path(cfg.read_text().strip())
+    except Exception:
+        pass
+    try:
+        import subprocess
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if top:
+            return Path(top)
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+MONO = _monorepo()
+CURSOR_FILE = Path(os.environ.get("DOCMIRROR_CURSOR") or (MONO / ".docmirror" / "cursor.json"))
+
+
+def cursor_repo() -> str | None:
+    try:
+        return json.loads(CURSOR_FILE.read_text()).get("active_repo") or None
+    except Exception:
+        return None
+
+
+def _registry() -> dict:
+    reg = Path(os.environ.get("DOCMIRROR_PROJECTS", str(MONO / "doc-mirror-system" / "projects.json")))
+    try:
+        return json.loads(reg.read_text()).get("projects", {})
+    except Exception:
+        return {}
+
+
+def resolve_repo(name: str) -> Path | None:
+    projs = _registry()
+    if name in projs:
+        p = Path(projs[name]["path"])
+        return p if p.is_absolute() else (MONO / p)
+    p = Path(name) if Path(name).is_absolute() else (MONO / name)
+    return p if p.is_dir() else None
+
+
+def mirror_dirs() -> list:
+    return sorted({p.parent for p in MONO.glob("**/docs/mirror") if p.is_dir()} |
+                  {p for p in MONO.glob("**/docs/mirror") if p.is_dir()})
+
+
+def check_repo(repo: Path) -> tuple[list, list]:
+    """Return (stale, orphan): stale = [(relpath, src_mtime, doc_mtime)]; orphan = [doc relpaths with no source]."""
+    mirror = repo / "docs" / "mirror"
+    stale, orphan = [], []
+    if not mirror.is_dir():
+        return stale, orphan
+    for doc in mirror.rglob("*.md"):
+        if doc.name == "_MANIFEST.txt" or doc.name.startswith("_"):
+            continue
+        rel = doc.relative_to(mirror).with_suffix("")   # strip the .md → the source relpath
+        src = repo / rel
+        if not src.exists():
+            orphan.append(str(rel))
+            continue
+        if src.stat().st_mtime > doc.stat().st_mtime:
+            stale.append((str(rel), src.stat().st_mtime, doc.stat().st_mtime))
+    return stale, orphan
+
+
+def main(argv) -> int:
+    args = argv[1:]
+    if args and args[0] in ("-h", "--help"):
+        print(__doc__); return 0
+
+    if args and args[0] == "--all":
+        repos = []
+        for m in MONO.glob("**/docs/mirror"):
+            if m.is_dir():
+                repos.append(m.parent)
+        repos = sorted(set(repos))
+    else:
+        target = args[0] if args else (cursor_repo() or ".")
+        r = resolve_repo(target)
+        if r is None:
+            print(f"docmirror-staleness: cannot resolve repo '{target}'", file=sys.stderr); return 2
+        repos = [r]
+
+    total_stale = 0
+    for repo in repos:
+        stale, orphan = check_repo(repo)
+        rel = repo.relative_to(MONO) if MONO in repo.parents or repo == MONO else repo
+        if not stale and not orphan:
+            print(f"✓ {rel}: every doc(m) is at least as new as its module (no drift).")
+            continue
+        for relpath, sm, dm in stale:
+            import datetime as _dt
+            print(f"✗ STALE {rel}/{relpath}: module edited {_dt.datetime.fromtimestamp(sm):%Y-%m-%d %H:%M:%S} "
+                  f"> doc(m) {_dt.datetime.fromtimestamp(dm):%Y-%m-%d %H:%M:%S} — re-derive docs/mirror/{relpath}.md")
+        for o in orphan:
+            print(f"⚠ ORPHAN {rel}: docs/mirror/{o}.md has no source module")
+        total_stale += len(stale)
+
+    if total_stale:
+        print(f"\ndocmirror-staleness: {total_stale} STALE doc(m) — a module changed without its impl-doc "
+              f"being re-derived. Re-derive + doc-mirror-commit before this is 'done'.")
+        return 1
+    print("\ndocmirror-staleness: clean — no module is newer than its doc(m).")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""
+projects — the canonical doc-mirror project registry + LIVE state detection.
+
+Registry (durable facts only): name -> {path, description}, in doc-mirror-system/projects.json.
+State is NEVER stored (a stored freshness bool rots the instant code changes) — it is COMPUTED LIVE:
+
+  init   : <path>/docs/mirror/_MANIFEST.txt exists          (was the mirror ever booted?)
+  closed : comm -3 manifest <-> doc-set is empty            (every module has a doc, no orphans — structurally complete NOW)
+  current: no module file has a git commit newer than its doc(m)'s last commit  (HEURISTIC, git-backed best-effort)
+
+Usage:
+  projects                 list registry with live [init/closed/current] state per project
+  projects list            same
+  projects which [DIR]     identify the leaf for DIR (default cwd) + whether it's REGISTERED;
+                           if a leaf-looking dir is unrecognized: "not recognized. choose from [...] or `projects add`"
+  projects state <name>    detailed live state for one project
+  projects add <name> <path> <description...>   register a new project (path relative to monorepo root or absolute)
+  projects path <name>     print the absolute path
+  --json                   machine-readable output (for `journal` / `plan` to consume)
+
+Source of truth: $DOCMIRROR_PROJECTS (default doc-mirror-system/projects.json).
+"""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+def _monorepo() -> Path:
+    """Repo root, NO hardcoded path: env → ~/.docmirror_root → git toplevel → cwd."""
+    e = os.environ.get("DOCMIRROR_MONOREPO")
+    if e:
+        return Path(e)
+    cfg = Path.home() / ".docmirror_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            return Path(cfg.read_text().strip())
+    except Exception:
+        pass
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if top:
+            return Path(top)
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+MONOREPO = _monorepo()
+REGISTRY = Path(os.environ.get("DOCMIRROR_PROJECTS", MONOREPO / "doc-mirror-system" / "projects.json"))
+
+
+def load() -> dict:
+    if REGISTRY.exists():
+        return json.loads(REGISTRY.read_text())
+    return {"projects": {}}
+
+
+def save(data: dict) -> None:
+    REGISTRY.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def abspath(rel_or_abs: str) -> Path:
+    p = Path(rel_or_abs)
+    return p if p.is_absolute() else (MONOREPO / p)
+
+
+# ---- live state detection (never stored) ----
+
+def is_init(root: Path) -> bool:
+    return (root / "docs" / "mirror" / "_MANIFEST.txt").is_file()
+
+
+def is_closed(root: Path) -> tuple[bool, list[str]]:
+    """Structurally complete NOW: manifest modules <-> doc(m) set biject. Returns (ok, [discrepancies])."""
+    man = root / "docs" / "mirror" / "_MANIFEST.txt"
+    md = root / "docs" / "mirror"
+    if not man.is_file() or not md.is_dir():
+        return False, ["not initialized"]
+    modules = set()
+    for line in man.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("./"):
+            modules.add(line[2:] + ".md")
+    docs = set()
+    for p in md.rglob("*.md"):
+        rel = str(p.relative_to(md))
+        if rel != "_MANIFEST.txt":
+            docs.add(rel)
+    missing = sorted(modules - docs)
+    orphan = sorted(docs - modules)
+    diff = [f"missing:{m}" for m in missing] + [f"orphan:{o}" for o in orphan]
+    return (len(diff) == 0), diff
+
+
+def _git_epoch(path: Path, rel: str) -> int:
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path), "log", "-1", "--format=%ct", "--", rel],
+            capture_output=True, text=True, timeout=5)
+        s = out.stdout.strip()
+        return int(s) if s else 0
+    except Exception:
+        return 0
+
+
+def is_current(root: Path) -> tuple[bool, list[str]]:
+    """HEURISTIC: for each module, is its source commit newer than its doc(m) commit?
+    Returns (ok, [stale modules]). Best-effort — an unrelated commit touching a module flips it stale."""
+    man = root / "docs" / "mirror" / "_MANIFEST.txt"
+    if not man.is_file():
+        return False, ["not initialized"]
+    rel_root = root.relative_to(MONOREPO) if MONOREPO in root.parents or root == MONOREPO else None
+    stale = []
+    for line in man.read_text().splitlines():
+        line = line.strip()
+        if not line.startswith("./"):
+            continue
+        mod = line[2:]
+        doc = f"docs/mirror/{mod}.md"
+        base = str(rel_root) + "/" if rel_root else ""
+        msrc = _git_epoch(MONOREPO, base + mod)
+        mdoc = _git_epoch(MONOREPO, base + doc)
+        if msrc and msrc > mdoc:
+            stale.append(mod)
+    return (len(stale) == 0), sorted(stale)
+
+
+def detect_leaf(start: Path) -> Path | None:
+    """Nearest ancestor of `start` (under the monorepo, excluding root) that has docs/mirror/."""
+    start = start.resolve()
+    if MONOREPO not in [start, *start.parents]:
+        return None
+    cur = start
+    while cur != cur.parent and cur != MONOREPO:
+        if (cur / "docs" / "mirror").is_dir():
+            return cur
+        cur = cur.parent
+    return None
+
+
+def registered_by_path(data: dict, root: Path):
+    for name, meta in data["projects"].items():
+        if abspath(meta["path"]).resolve() == root.resolve():
+            return name
+    return None
+
+
+def state_str(root: Path) -> str:
+    if not is_init(root):
+        return "uninitialized"
+    closed, _ = is_closed(root)
+    current, stale = is_current(root)
+    parts = ["init"]
+    parts.append("closed" if closed else "OPEN")
+    parts.append("current" if current else f"stale({len(stale)})")
+    return " ".join(parts)
+
+
+def cmd_list(as_json: bool):
+    data = load()
+    if as_json:
+        out = {}
+        for name, meta in data["projects"].items():
+            root = abspath(meta["path"])
+            closed, _ = is_closed(root)
+            current, stale = is_current(root)
+            out[name] = {"path": meta["path"], "description": meta["description"],
+                         "init": is_init(root), "closed": closed, "current": current,
+                         "stale_count": len(stale)}
+        print(json.dumps(out, indent=2))
+        return 0
+    print(f"doc-mirror projects ({REGISTRY}):\n")
+    for name, meta in data["projects"].items():
+        root = abspath(meta["path"])
+        print(f"  [{name}]  {state_str(root)}")
+        print(f"      {meta['path']}")
+        print(f"      {meta['description'][:100]}")
+    print(f"\n  ({len(data['projects'])} registered)")
+    return 0
+
+
+def cmd_which(args, as_json: bool):
+    start = Path(args[0]) if args else Path.cwd()
+    data = load()
+    leaf = detect_leaf(start)
+    if leaf is None:
+        msg = {"leaf": None, "registered": None, "note": "no doc-mirror leaf above this dir (global scope)"}
+        print(json.dumps(msg) if as_json else "global scope (no docs/mirror leaf above this dir)")
+        return 0
+    name = registered_by_path(data, leaf)
+    if name:
+        print(json.dumps({"leaf": str(leaf), "registered": name, "state": state_str(leaf)}) if as_json
+              else f"[{name}]  {leaf}  →  {state_str(leaf)}")
+        return 0
+    # leaf-looking but UNRECOGNIZED — the prompt you asked for
+    names = list(data["projects"].keys())
+    if as_json:
+        print(json.dumps({"leaf": str(leaf), "registered": None, "choices": names}))
+    else:
+        print(f"⚠️  {leaf} is a doc-mirror leaf but NOT recognized.")
+        print(f"    choose from: {', '.join('['+n+']' for n in names)}")
+        print(f"    or add it:   projects add <name> {leaf.relative_to(MONOREPO)} \"<description>\"")
+    return 0
+
+
+def cmd_state(args):
+    if not args:
+        print("projects state <name>", file=sys.stderr); return 2
+    data = load()
+    name = args[0]
+    if name not in data["projects"]:
+        print(f"unknown project [{name}]. registered: {', '.join(data['projects'])}", file=sys.stderr); return 2
+    root = abspath(data["projects"][name]["path"])
+    closed, diff = is_closed(root)
+    current, stale = is_current(root)
+    print(f"[{name}]  {root}")
+    print(f"  init   : {is_init(root)}")
+    print(f"  closed : {closed}" + ("" if closed else f"   discrepancies: {diff[:10]}"))
+    print(f"  current: {current}" + ("" if current else f"   stale modules ({len(stale)}): {stale[:10]}"))
+    return 0
+
+
+def cmd_add(args):
+    if len(args) < 3:
+        print('projects add <name> <path> <description...>', file=sys.stderr); return 2
+    name, path = args[0], args[1]
+    desc = " ".join(args[2:])
+    data = load()
+    if name in data["projects"]:
+        print(f"[{name}] already registered → {data['projects'][name]['path']}", file=sys.stderr); return 2
+    root = abspath(path)
+    if not root.is_dir():
+        print(f"path does not exist: {root}", file=sys.stderr); return 2
+    # store path relative to monorepo when possible
+    try:
+        rel = str(root.resolve().relative_to(MONOREPO))
+    except ValueError:
+        rel = str(root.resolve())
+    data["projects"][name] = {"path": rel, "description": desc}
+    save(data)
+    print(f"✅ registered [{name}] → {rel}   state: {state_str(root)}")
+    return 0
+
+
+def cmd_path(args):
+    if not args:
+        print("projects path <name>", file=sys.stderr); return 2
+    data = load()
+    if args[0] not in data["projects"]:
+        print(f"unknown project [{args[0]}]", file=sys.stderr); return 2
+    print(abspath(data["projects"][args[0]]["path"]))
+    return 0
+
+
+def main(argv):
+    args = argv[1:]
+    as_json = "--json" in args
+    args = [a for a in args if a != "--json"]
+    if not args:
+        return cmd_list(as_json)
+    cmd, rest = args[0], args[1:]
+    if cmd in ("-h", "--help"):
+        print(__doc__); return 0
+    if cmd == "list":
+        return cmd_list(as_json)
+    if cmd == "which":
+        return cmd_which(rest, as_json)
+    if cmd == "state":
+        return cmd_state(rest)
+    if cmd == "add":
+        return cmd_add(rest)
+    if cmd == "path":
+        return cmd_path(rest)
+    print(f"unknown command: {cmd}\n{__doc__}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

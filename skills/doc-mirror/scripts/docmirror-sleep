@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# docmirror-sleep — the loop's idle mechanic (8h self-sleep, timeout-safe).
+#
+# Problem: a single `sleep 28800` run via the Bash tool is KILLED at the 10-min tool
+# timeout, so the agent never actually idles. This helper sleeps in sub-timeout CHUNKS
+# and persists a wake-time, so the idle survives across Stop-hook turns:
+#   - Each invocation sleeps ONE chunk (default 540s = 9 min, under the 10-min cap),
+#     then returns. The Stop hook re-fires, the agent re-runs this, and it keeps
+#     sleeping until the wake-time is reached.
+#   - State: /tmp/docmirror_sleep_until (unix epoch). First call sets it to now+8h.
+#   - When now >= wake-time, it clears state and prints WAKE — the agent then re-checks
+#     the queue (root tracker) and resumes or sleeps again.
+#
+# Usage:
+#   docmirror-sleep            # sleep one 9-min chunk toward an 8h idle (default)
+#   docmirror-sleep <secs>     # set/keep an idle of <secs> total instead of 8h
+#   docmirror-sleep status     # print remaining seconds without sleeping
+#   docmirror-sleep wake       # clear the idle (force wake)
+#
+# Isaac interrupts at any time by sending a message — that ends the sleeping turn
+# naturally; on the next turn the agent re-reads the queue. To fully cancel idle:
+# `docmirror-sleep wake` (or just give the agent work).
+
+set -u
+STATE=/tmp/docmirror_sleep_until
+CHUNK=540          # 9 min — under the 10-min Bash tool timeout
+DEFAULT_IDLE=28800 # 8 h
+
+now() { date +%s; }
+
+case "${1:-}" in
+  wake)
+    rm -f "$STATE"; echo "WAKE: idle cleared."; exit 0 ;;
+  status)
+    if [ -f "$STATE" ]; then
+      rem=$(( $(cat "$STATE") - $(now) ))
+      [ "$rem" -lt 0 ] && rem=0
+      echo "idle: ${rem}s remaining"; else echo "idle: not sleeping"; fi
+    exit 0 ;;
+esac
+
+# Determine total idle if this is the first chunk
+if [ ! -f "$STATE" ]; then
+  total="${1:-$DEFAULT_IDLE}"
+  case "$total" in (*[!0-9]*) total=$DEFAULT_IDLE ;; esac
+  echo $(( $(now) + total )) > "$STATE"
+fi
+
+wake_at=$(cat "$STATE")
+rem=$(( wake_at - $(now) ))
+
+# Already at/near the wake boundary (within 2s tolerance for integer rounding) -> WAKE.
+if [ "$rem" -le 2 ]; then
+  rm -f "$STATE"
+  echo "WAKE: idle complete. Re-read the ROOT progress-tracker and resume the queue (or sleep again if still empty)."
+  exit 0
+fi
+
+# sleep one chunk (or the remainder if less than a chunk)
+nap=$CHUNK
+[ "$rem" -lt "$CHUNK" ] && nap=$rem
+sleep "$nap"
+
+rem_after=$(( wake_at - $(now) ))
+if [ "$rem_after" -le 2 ]; then
+  rm -f "$STATE"
+  echo "WAKE: idle complete. Re-read the ROOT progress-tracker and resume."
+else
+  echo "SLEEPING: napped ${nap}s, ~${rem_after}s of idle remaining. Run docmirror-sleep again to continue idling (you cannot stop; only work, compact, or keep sleeping)."
+fi

@@ -1,0 +1,495 @@
+#!/usr/bin/env python3
+"""
+journal — the dated THINKLOG. Records what you THOUGHT/DECIDED (cognition), NOT what changed
+(that is git log — a separate record; git log is NOT the journal).
+
+EMERGENT routing (NOT cwd). The entry is routed by WHAT YOU SAY IT IS ABOUT:
+  - the TYPE you give (-t) decides WHETHER it becomes durable vision,
+  - the TAGS (--tags) decide WHICH module/topic it is about,
+  - the REPO (--repo, else the cursor's active_repo) decides WHICH project a not-yet-built topic lives in.
+cwd is never the router. The system MAKES + APPENDS the right files for you; you never hand-edit them.
+
+ONE GLOBAL index + projections:
+  - global index:        $DOCMIRROR_JOURNAL_DIR/YYYY-MM.md     line = "{now}  [repo]  {TYPE}: {msg}"
+  - per-repo thinklog:    <repo>/context/journal/YYYY-MM.md     line = "{now}  {TYPE}: {msg}"   (if a repo resolved)
+  - vision projection:    a vision-type entry ALSO lands in the vision layer of each tag it is about:
+        module tag  (docs/mirror/<tag>.md exists)  → its paired  <repo>/docs/vision/<tag>.md
+        topic  tag  (no doc(m) yet — the normal case) → <repo>/docs/vision/_<topic>.md   (created on demand)
+
+Routing of <repo> (in priority order; NEVER cwd):
+  1. -g                        → global index only (no per-repo, no vision home). The escape for a pure
+                                 thinklog thought that is not about any one project.
+  2. --repo <name|path>        → a registered project NAME, or a monorepo-relative/absolute PATH that exists.
+  3. the CURSOR's active_repo  → <root>/.docmirror/cursor.json (what you are currently working on).
+  4. none of the above         → global only (a note suggests --repo/--tags if you meant it to be durable).
+
+The cursor stays honest automatically: every journal event about a resolved repo writes back the
+cursor's NON-PHASE fields — active_repo (the field journal itself routes by), active_module (from a
+module-tag, if any), and a `last_journal` freshness stamp. PHASE is NEVER touched by journal — it
+advances ONLY on a state transition (a state-skill handoff), because think is cross-cutting, "never a
+state." This is what stops a think-heavy session letting the cursor's active_repo rot (drift fixed
+2026-06-01: journal was made emergent on 05-31 but its fallback source-of-truth, the cursor, stayed
+hand-cranked, so the drift had merely relocated from cwd to the cursor).
+
+Vision projection: EVERY thought is a durable VISION append EXCEPT a COMMIT (the only impl-changing
+type — handled by doc-mirror-commit, never appended here). So VISION/INTENT/DECISION/OPEN/FINDING/
+HYPOTHESIS (and an untyped but --tagged note) all append to the vision DELTA; an entry "wants vision"
+when it has a non-COMMIT type OR carries tags. Each append gets a stable id ([vN]); a module-tag lands
+in its paired vision(m) (HEADER seeded = verbatim doc(m)), a topic-tag in <repo>/docs/vision/_<topic>.md.
+`doc-mirror-commit --realizes <ids>` later drops the realized appends as it re-bases HEADER to doc(m).
+
+RAISE ON MISUSE: a vision-type entry that cannot be homed (no module-tag AND no repo to hold a topic
+file) is REFUSED — it would evaporate. The error tells you to add --tags / --repo, or -g for global-only.
+
+Usage:
+    journal "quick thought"                                   # global-only note (no type, no repo)
+    journal -t DECISION --tags cat_gate "<msg>"               # routed by cursor.active_repo; topic _cat_gate.md
+    journal -t DECISION --repo soma-prolog --tags soma_prolog/soma_partials.pl "<msg>"  # module → paired vision(m)
+    journal -t FINDING --repo application/promptworld --tags promptworld-system "<msg>" # topic in an unregistered repo path
+    journal -t INTENT "<msg>"                                 # journal-only (INTENT never projects to vision)
+    journal -t OPEN --repo soma-prolog --tags some-fork "<msg>"  # vision + (you then docmirror-sleep → echoes to Isaac)
+    journal -g "<msg>"                                        # global index only, tag [global]
+    journal --where [--repo X]                                # print the target paths it WOULD write, and exit
+
+  -t TYPE     entry type (see vision-projecting list above). Free-form ok; prefer the named ones.
+  --tags a,b  comma list = the hyperedge (modules + topics) the entry is about. Drives vision projection.
+  --repo X    the project this is about (registry name OR monorepo path). Overrides the cursor.
+  --supersedes vN,vM   prior vision entries THIS one REPLACES — they are RETIRED from the live vision
+              (preserved in git history). This is what makes staleness impossible: a correcting/deciding
+              entry retires the claim it overturns instead of stacking a correction on top of the dead one.
+  -g          global-only (cross-cutting thought; no per-repo, no vision).
+
+Always {datetime.now().isoformat(timespec=seconds)} — real timestamp, never faked.
+Repo root is derived (no hardcoded path): $DOCMIRROR_MONOREPO, else ~/.docmirror_root, else git toplevel,
+else cwd. $DOCMIRROR_JOURNAL_DIR overrides the journal dir (default <root>/context/journal).
+"""
+import json
+import os
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+
+def _monorepo() -> Path:
+    """The repo root the doc-mirror layer lives in. NO hardcoded container path: env override, else a
+    machine-local ~/.docmirror_root, else the git toplevel of cwd, else cwd."""
+    e = os.environ.get("DOCMIRROR_MONOREPO")
+    if e:
+        return Path(e)
+    cfg = Path.home() / ".docmirror_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            return Path(cfg.read_text().strip())
+    except Exception:
+        pass
+    try:
+        import subprocess
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if top:
+            return Path(top)
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+MONOREPO = _monorepo()
+GLOBAL_DIR = Path(os.environ.get("DOCMIRROR_JOURNAL_DIR", str(MONOREPO / "context" / "journal")))
+REGISTRY = Path(os.environ.get("DOCMIRROR_PROJECTS", str(MONOREPO / "doc-mirror-system" / "projects.json")))
+CURSOR_FILE = Path(os.environ.get("DOCMIRROR_CURSOR") or (MONOREPO / ".docmirror" / "cursor.json"))
+
+# A journal entry becomes a durable VISION append UNLESS it is a COMMIT. (Isaac's correction: INTENT
+# and HYPOTHESIS are vision too — EVERY thought about not-yet-built code is vision. COMMIT is the only
+# type that changes the impl, and that is handled by doc-mirror-commit, never appended here.)
+# The DELTA marker separates a vision(m)'s [HEADER = verbatim doc(m)] (above) from [appends] (below).
+VISION_DELTA_MARKER = ("<!-- ===VISION DELTA: id-tagged appends below = the gap (`vision diff <m>`); "
+                       "`doc-mirror-commit --realizes <ids>` drops them on build === -->")
+
+
+def month() -> str:
+    return f"{datetime.now():%Y-%m}.md"
+
+
+def global_index() -> Path:
+    return GLOBAL_DIR / month()
+
+
+def append(path: Path, line: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as f:
+        f.write(line if line.endswith("\n") else line + "\n")
+
+
+def load_registry() -> dict:
+    try:
+        return json.loads(REGISTRY.read_text()).get("projects", {})
+    except Exception:
+        return {}
+
+
+def abspath(rel_or_abs: str) -> Path:
+    p = Path(rel_or_abs)
+    return p if p.is_absolute() else (MONOREPO / rel_or_abs)
+
+
+def cursor_repo() -> str | None:
+    """The agent's current subject = the cursor's active_repo (what it is working on)."""
+    try:
+        return json.loads(CURSOR_FILE.read_text()).get("active_repo") or None
+    except Exception:
+        return None
+
+
+def touch_cursor(rtag: str, tags: list, repo_root: Path | None, ts: str) -> None:
+    """Keep the cursor's NON-PHASE fields honest on every journal event (the cursor is the agent's
+    'you are here' pin; journal is the continuous signal of WHERE it is). Updates active_repo (the
+    resolved repo — the field journal itself routes by, the one that rots in think-heavy sessions),
+    active_module (the first MODULE-tag, if any — a topic-tag does not pin a module), and a freshness
+    stamp `last_journal`. It NEVER touches `phase` / `last_gate` / `open_fork` / `updated` — PHASE
+    advances ONLY on a state transition (a state-skill handoff), because think is cross-cutting,
+    'never a state.' Best-effort: a cursor-write failure must never break the journal append."""
+    if repo_root is None or rtag in ("", "global"):
+        return
+    try:
+        cur = {}
+        if CURSOR_FILE.exists():
+            try:
+                cur = json.loads(CURSOR_FILE.read_text())
+            except Exception:
+                cur = {}
+        cur["active_repo"] = rtag
+        mod = next((t for t in tags if module_vision_file(t) is not None), None)
+        if mod is not None:
+            cur["active_module"] = mod
+        cur["last_journal"] = ts
+        CURSOR_FILE.parent.mkdir(parents=True, exist_ok=True)
+        CURSOR_FILE.write_text(json.dumps(cur, indent=2))
+    except Exception:
+        pass
+
+
+def resolve_repo_name(name: str) -> tuple[Path | None, str | None]:
+    """Resolve a candidate repo string to (root_path, tag). Tries the registry NAME first, then a
+    monorepo-relative/absolute PATH that exists. Returns (None, None) if it resolves to neither."""
+    if not name:
+        return None, None
+    projs = load_registry()
+    if name in projs:
+        return abspath(projs[name]["path"]), name
+    p = abspath(name)
+    if p.is_dir():
+        # prefer a registered name for this path; else the relpath under the monorepo
+        for n, meta in projs.items():
+            if abspath(meta["path"]).resolve() == p.resolve():
+                return p, n
+        try:
+            return p, str(p.resolve().relative_to(MONOREPO))
+        except ValueError:
+            return p, p.name
+    return None, None
+
+
+def route(repo_arg: str | None, global_only: bool) -> tuple[Path | None, str, str | None]:
+    """Return (repo_root, tag, error). repo_root None = global-only. error set only on an EXPLICIT
+    --repo that cannot resolve (cursor fallback never errors — it just falls through to global)."""
+    if global_only:
+        return None, "global", None
+    if repo_arg:
+        root, tag = resolve_repo_name(repo_arg)
+        if root is None:
+            projs = load_registry()
+            reg = ", ".join("[" + n + "]" for n in projs) or "(none registered)"
+            return None, "", (f"--repo '{repo_arg}' is not a registered project and not an existing path "
+                              f"under the monorepo.\n    registered: {reg}\n"
+                              f"    or pass a monorepo-relative path (e.g. application/promptworld).")
+        return root, tag, None
+    cr = cursor_repo()
+    if cr:
+        root, tag = resolve_repo_name(cr)
+        if root is not None:
+            return root, tag, None
+    return None, "global", None
+
+
+def module_vision_file(tag: str) -> Path | None:
+    """If `tag` is a MODULE (some repo under the monorepo has docs/mirror/<tag>.md = its doc(m)),
+    return its paired docs/vision/<tag>.md. Otherwise None (it is a topic, not a module)."""
+    hits = [h for h in MONOREPO.glob(f"**/docs/mirror/{tag}.md") if "/_archive/" not in str(h)]
+    if not hits:
+        return None
+    return Path(str(hits[0]).replace("/docs/mirror/", "/docs/vision/", 1))
+
+
+def _topic_slug(tag: str) -> str:
+    s = tag.strip().lower().replace("/", "-").replace(" ", "-")
+    return "".join(c for c in s if c.isalnum() or c in "-_.") or "misc"
+
+
+def _next_vid(text: str) -> int:
+    """Next stable append id for a vision file (max existing [vN] + 1)."""
+    ids = [int(m) for m in re.findall(r"-\s*\[v(\d+)\]", text)]
+    return (max(ids) + 1) if ids else 1
+
+
+def append_vision_entry(vf: Path, body: str, ts: str, tags: list, header_doc: Path | None) -> int:
+    """Append an id-tagged line to vf's DELTA (below the marker), establishing structure if needed.
+    Structure: [HEADER]\\n{MARKER}\\n[DELTA]. header_doc = the paired doc(m) to seed HEADER with when
+    CREATING a module vision file (topic files pass None → a one-line title header)."""
+    existing = vf.read_text() if vf.exists() else ""
+    vid = _next_vid(existing)
+    line = f"- [v{vid}]  {ts}  {body}  tags:[{', '.join(tags)}]"
+    if not existing:
+        if header_doc is not None and header_doc.exists():
+            header = header_doc.read_text().rstrip() + "\n\n"   # seed HEADER = verbatim doc(m)
+        else:
+            header = f"# vision: {tags[0] if tags else vf.stem} (topic — auto-created by `journal`)\n\n"
+        vf.parent.mkdir(parents=True, exist_ok=True)
+        vf.write_text(f"{header}{VISION_DELTA_MARKER}\n{line}\n")
+    elif VISION_DELTA_MARKER in existing:
+        append(vf, line)                       # marker present → DELTA is the tail → append
+    else:                                       # legacy file (no marker) → its content becomes DELTA
+        vf.write_text(f"{VISION_DELTA_MARKER}\n{existing.rstrip()}\n{line}\n")
+    return vid
+
+
+def retire_superseded(vf: Path, ids: list) -> int:
+    """Remove superseded [vN] entries from a vision file (a newer entry REPLACED them). The content is
+    preserved in git history; the LIVE vision then shows only current truth — this is what makes
+    staleness impossible: a superseding journal entry RETIRES what it replaces instead of piling a
+    correction on top of the dead claim. Returns how many entries were retired."""
+    if not vf.exists() or not ids:
+        return 0
+    idset = {int(x) for x in ids}
+    text = vf.read_text()
+    kept, removed = [], 0
+    for line in text.splitlines():
+        m = re.match(r"\s*-\s*\[v(\d+)\]", line)
+        if m and int(m.group(1)) in idset:
+            removed += 1
+            continue
+        kept.append(line)
+    if removed:
+        vf.write_text("\n".join(kept) + ("\n" if text.endswith("\n") else ""))
+    return removed
+
+
+def project_to_vision(tags: list, repo_root: Path | None, body: str, ts: str) -> list:
+    """Append the entry to the vision layer of each tag it is about. A module-tag → its paired
+    vision(m) (HEADER seeded from doc(m)); a topic-tag → <repo>/docs/vision/_<topic>.md (created on
+    demand, needs repo_root). Each append gets a stable [vN] id. Returns the files written."""
+    written = []
+    for tag in tags:
+        vf = module_vision_file(tag)
+        if vf is not None:
+            doc = Path(str(vf).replace("/docs/vision/", "/docs/mirror/", 1))  # paired doc(m) for HEADER
+            append_vision_entry(vf, body, ts, tags, header_doc=doc)
+            written.append(vf)
+        elif repo_root is not None:
+            tf = repo_root / "docs" / "vision" / f"_{_topic_slug(tag)}.md"
+            append_vision_entry(tf, body, ts, tags, header_doc=None)
+            written.append(tf)
+        # else: topic tag with no repo to home it — handled by the misuse check in main()
+    return written
+
+
+# ── CartON dual-write (the SOUP-layer store) ─────────────────────────────────
+# A journal entry IS an add_concept, ASSEMBLED from its args (the agent never names/shapes it):
+#   name        = Doc_Mirror_Journal_Entry_{repo}_{carton-ts}
+#   is_a        = Doc_Mirror_Journal_{Type}    part_of = {repo}    instantiates = Doc_Mirror_Journal_Entry
+#   description = the blob                      related_to = the tags  (bidirectional)
+# It writes by QUEUEING a raw_concept json to the observation-worker daemon (the proven carton_precompact
+# path), so ingest is async (~10s). Markdown stays FULL for now (dual-write); it thins to a pointer-trace
+# only once carton is trusted (replace-before-remove). DEFAULT ON (the journal IS the graph); opt out
+# with DOCMIRROR_CARTON=0. FAIL-OPEN so a carton hiccup never breaks the markdown append.
+CARTON_QUEUE_DIR = Path(os.environ.get("DOCMIRROR_CARTON_QUEUE", "/tmp/heaven_data/carton_queue"))
+
+
+def _carton_enabled() -> bool:
+    # Default ON (the journal IS the graph). Opt out with DOCMIRROR_CARTON=0/off/false/no.
+    return str(os.environ.get("DOCMIRROR_CARTON", "")).strip().lower() not in ("0", "false", "off", "no")
+
+
+def _carton_ts(iso_ts: str) -> str:
+    """ISO ts -> CartON-safe name segment (matches carton_precompact.format_ts: %Y_%m_%dT%H_%M_%S)."""
+    try:
+        return datetime.fromisoformat(iso_ts.replace("Z", "+00:00")).strftime("%Y_%m_%dT%H_%M_%S")
+    except Exception:
+        return datetime.now().strftime("%Y_%m_%dT%H_%M_%S")
+
+
+def _norm_seg(s: str) -> str:
+    """A repo/tag -> Title_Case_With_Underscores name segment (doc-mirror-system -> Doc_Mirror_System)."""
+    words = [w for w in re.split(r"[^A-Za-z0-9]+", s.strip()) if w]
+    return "_".join(w[:1].upper() + w[1:] for w in words) or "X"
+
+
+def _journal_class(type_raw: str) -> str:
+    """The is_a class for a journal entry: Doc_Mirror_Journal_{Type} (untyped -> _Note)."""
+    return f"Doc_Mirror_Journal_{(type_raw or 'NOTE').strip().capitalize()}"
+
+
+def queue_carton(concept_name: str, description: str, relationships: list, ts: str) -> str | None:
+    """Drop a raw_concept json into the observation-worker queue (same shape carton_precompact uses).
+    Fail-open: returns the name on success, None on any error -- never raises into the journal append."""
+    try:
+        import uuid
+        CARTON_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+        qf = CARTON_QUEUE_DIR / f"{datetime.now():%Y%m%d_%H%M%S%f}_{uuid.uuid4().hex[:8]}.json"
+        qf.write_text(json.dumps({
+            "raw_concept": True,
+            "concept_name": concept_name,
+            "description": description,
+            "relationships": relationships,
+            "source": "journal",
+            "timestamp": ts,
+        }))
+        return concept_name
+    except Exception:
+        return None
+
+
+def main(argv):
+    args = argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+
+    global_only = False
+    type_raw = ""        # e.g. "DECISION"
+    type_prefix = ""     # e.g. "DECISION: "
+    tags = []
+    repo_arg = None
+    supersedes = []      # vN ids this entry REPLACES (retired from the live vision — staleness-killer)
+    where = False
+    rest = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "-g":
+            global_only = True
+        elif a in ("-t", "--type"):
+            if i + 1 >= len(args):
+                print("journal: -t needs a TYPE", file=sys.stderr); return 2
+            type_raw = args[i + 1].strip().upper()
+            type_prefix = type_raw + ": "
+            i += 1
+        elif a in ("-T", "--tags"):
+            if i + 1 >= len(args):
+                print("journal: --tags needs a comma-list", file=sys.stderr); return 2
+            tags = [t.strip() for t in args[i + 1].split(",") if t.strip()]
+            i += 1
+        elif a == "--repo":
+            if i + 1 >= len(args):
+                print("journal: --repo needs a name or path", file=sys.stderr); return 2
+            repo_arg = args[i + 1].strip()
+            i += 1
+        elif a == "--supersedes":
+            if i + 1 >= len(args):
+                print("journal: --supersedes needs vN ids (e.g. v12,v15)", file=sys.stderr); return 2
+            supersedes = [int(x) for x in re.findall(r"\d+", args[i + 1])]
+            i += 1
+        elif a == "--where":
+            where = True
+        else:
+            rest.append(a)
+        i += 1
+
+    repo_root, rtag, err = route(repo_arg, global_only)
+    if err:
+        print(f"journal: {err}", file=sys.stderr)
+        return 3
+
+    if where:
+        print(f"global : {global_index()}")
+        print(f"repo   : {(repo_root / 'context' / 'journal' / month()) if repo_root else '(global only)'}")
+        print(f"rtag   : {rtag}")
+        print(f"vision : {'(COMMIT → impl-changer, not a vision append)' if type_raw == 'COMMIT' else '(appends to vision when tagged + homed)'}")
+        print(f"carton : {('ON (default) → ' + str(CARTON_QUEUE_DIR)) if _carton_enabled() else 'off (DOCMIRROR_CARTON=0)'}")
+        return 0
+
+    msg = " ".join(rest).strip()
+    if not msg:
+        print("journal: empty message", file=sys.stderr); return 2
+
+    # Every thought is a VISION append EXCEPT a COMMIT (the impl-changer; handled by doc-mirror-commit).
+    # "wants vision" = the agent meant it durable: a non-COMMIT type was given, OR it carries tags.
+    typed = bool(type_raw)
+    is_commit = type_raw == "COMMIT"
+    wants_vision = (not is_commit) and (typed or bool(tags))
+
+    # RAISE ON MISUSE: a vision append that cannot be homed would evaporate.
+    if wants_vision and not global_only:
+        has_module_tag = any(module_vision_file(t) is not None for t in tags)
+        can_home_topic = bool(tags) and repo_root is not None
+        if not (has_module_tag or can_home_topic):
+            label = type_raw or "tagged note"
+            print(f"journal: this {label} is a durable VISION append but it cannot be homed — it would "
+                  f"evaporate.", file=sys.stderr)
+            print("    Give it a subject so it projects to the vision layer:", file=sys.stderr)
+            print("      • --tags <module-relpath>            (a module → its paired docs/vision/<m>.md), and/or",
+                  file=sys.stderr)
+            print("      • --tags <topic> --repo <name|path>  (a topic → <repo>/docs/vision/_<topic>.md)",
+                  file=sys.stderr)
+            print("      • (or set the cursor's active_repo: docmirror-cursor set --repo <name|path>)",
+                  file=sys.stderr)
+            print("    Or, if this is a pure cross-cutting thinklog note (not about one project): add -g.",
+                  file=sys.stderr)
+            return 3
+
+    ts = datetime.now().isoformat(timespec="seconds")
+    body = f"{type_prefix}{msg}"
+    if supersedes:
+        body += f"  (supersedes: {', '.join('v' + str(i) for i in supersedes)})"
+
+    # 1. GLOBAL index — always, repo-tagged
+    append(global_index(), f"{ts}  [{rtag}]  {body}")
+    wrote = [f"global[{rtag}]"]
+
+    # 2. per-repo thinklog (if a repo resolved and not global-only)
+    if repo_root is not None and not global_only:
+        append(repo_root / "context" / "journal" / month(), f"{ts}  {body}")
+        wrote.append(f"{rtag}:context/journal/{month()}")
+
+    # 3. VISION projection (every non-COMMIT thought, if tagged): id-tagged append to each tag's vision
+    if wants_vision and tags and not global_only:
+        written_vfs = project_to_vision(tags, repo_root, body, ts)
+        for vf in written_vfs:
+            try:
+                wrote.append(f"vision:{vf.relative_to(MONOREPO)}")
+            except ValueError:
+                wrote.append(f"vision:{vf}")
+        # supersession: RETIRE the replaced ids from each written vision file so the live vision shows
+        # only current truth (staleness becomes impossible — the new entry replaced the old claim).
+        if supersedes:
+            for vf in written_vfs:
+                r = retire_superseded(vf, supersedes)
+                if r:
+                    wrote.append(f"retired-superseded:{r}@{vf.name}")
+
+    # Keep the cursor's NON-PHASE fields fresh (active_repo / active_module / last_journal). PHASE is
+    # never touched here — it advances only on a state transition. This is the drift fix (2026-06-01).
+    touch_cursor(rtag, tags, repo_root, ts)
+
+    # CartON dual-write (SOUP layer): a homed, durable entry ALSO becomes an add_concept queued to the
+    # observation daemon. Gated (DOCMIRROR_CARTON) + fail-open; the markdown above is unchanged for now.
+    if _carton_enabled() and repo_root is not None and not global_only and not is_commit:
+        cname = f"Doc_Mirror_Journal_Entry_{_norm_seg(rtag)}_{_carton_ts(ts)}"
+        rels = [
+            {"relationship": "is_a", "related": [_journal_class(type_raw)]},
+            {"relationship": "part_of", "related": [_norm_seg(rtag)]},
+            {"relationship": "instantiates", "related": ["Doc_Mirror_Journal_Entry"]},
+        ]
+        if tags:
+            rels.append({"relationship": "related_to", "related": tags})
+        ref = queue_carton(cname, body, rels, ts)
+        if ref:
+            wrote.append(f"carton:{ref}")
+
+    note = ""
+
+    print(f"📓 {ts}  {body}  →  {' + '.join(wrote)}{note}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

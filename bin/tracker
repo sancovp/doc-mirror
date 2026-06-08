@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""
+tracker — the ACTUATOR for the doc-mirror progress-tracker's state-machine write-legs.
+
+The progress-tracker is a MANAGED file (CLI-only; the readonly guard forbids hand-editing it). The
+state machine names three tracker WRITES that had no actuator until now:
+  - init  S_register  → add a leaf codebase to the ROOT REPO ORDER router      → `tracker register`
+  - seework S_plan    → write/extend the prioritized PLAN (pointers into gaps)  → `tracker add`
+  - seework S_strike  → drop a pointer whose vision gap has closed (built)       → `tracker strike`
+This CLI is that actuator — the same role `journal`/`doc-mirror-commit`/`docmirror-cursor` play for
+the other managed files. It edits ONLY two marker-bounded regions and never touches anything else, so
+any pre-existing prose (legacy roadmap, later-notes) is preserved verbatim by construction.
+
+The canonical model (what the tracker IS): a cross-repo ROUTER + a thin prioritized PLAN of pointers
+into the always-true VIEW (`vision stats`/`diff` = vision(m) − doc(m)). It holds NO restated design
+prose — that lives in vision(m). `plan check` reconciles this PLAN against the VIEW (never silent).
+
+Regions (created on first write; everything else in the file is left untouched):
+  <!-- TRACKER:REPO_ORDER --> … table … <!-- /TRACKER:REPO_ORDER -->   (ROOT tracker only)
+  <!-- TRACKER:PLAN -->       … pointers … <!-- /TRACKER:PLAN -->
+On the FIRST write to a file that has no markers, the existing body (below the H1 title) is wrapped in
+a <!-- TRACKER:LEGACY … --> block (verbatim, never edited again) and fresh empty regions are inserted
+above it — a lossless one-time adoption.
+
+Usage:
+  tracker register <repo> [--status S] [--note N]   add/update a REPO ORDER row (root). status default QUEUED.
+  tracker active <repo>                              set that repo's status to ACTIVE (others unchanged).
+  tracker add <vision-ref> [--repo R] [--note N]     append a PLAN pointer (e.g. vision:<relpath|topic>[#vN]).
+  tracker strike <vision-ref>                         drop the matching PLAN pointer (its gap closed → built).
+  tracker show                                        print the canonical REPO ORDER + PLAN regions.
+  tracker --where [--leaf <repo>]                     print the tracker path this would write, and exit.
+
+  --leaf <repo>   target that repo's LEAF tracker (<repo>/context/progress-tracker.md) instead of ROOT.
+
+Repo root (no hardcoded path): $DOCMIRROR_MONOREPO → ~/.docmirror_root → git toplevel → cwd.
+"""
+import argparse
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+def _monorepo() -> Path:
+    e = os.environ.get("DOCMIRROR_MONOREPO")
+    if e:
+        return Path(e)
+    cfg = Path.home() / ".docmirror_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            return Path(cfg.read_text().strip())
+    except Exception:
+        pass
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if top:
+            return Path(top)
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+MONOREPO = _monorepo()
+ROOT_TRACKER = MONOREPO / "context" / "progress-tracker.md"
+
+ORDER_OPEN, ORDER_CLOSE = "<!-- TRACKER:REPO_ORDER -->", "<!-- /TRACKER:REPO_ORDER -->"
+PLAN_OPEN, PLAN_CLOSE = "<!-- TRACKER:PLAN -->", "<!-- /TRACKER:PLAN -->"
+LEGACY_OPEN = ("<!-- TRACKER:LEGACY (pre-tracker-CLI, VERBATIM — migrate into vision(m)/leaf trackers "
+               "incrementally; nothing here is the canonical plan above) -->")
+
+ORDER_HEADER = "## 🧭 REPO ORDER (doc-mirror cross-repo router — the loop reads THIS first)"
+PLAN_HEADER = "## 📋 PLAN (ordered pointers into vision gaps — `tracker add` / `tracker strike`)"
+TABLE_HEAD = "| # | repo | status | note |\n|---|---|---|---|"
+
+
+def tracker_path(leaf: str | None) -> Path:
+    if not leaf:
+        return ROOT_TRACKER
+    p = Path(leaf)
+    base = p if p.is_absolute() else (MONOREPO / leaf)
+    return base / "context" / "progress-tracker.md"
+
+
+def _region(text: str, open_m: str, close_m: str) -> tuple[int, int] | None:
+    """Return (start_after_open, start_of_close) char indices of a region body, or None if absent."""
+    i = text.find(open_m)
+    if i < 0:
+        return None
+    j = text.find(close_m, i + len(open_m))
+    if j < 0:
+        return None
+    return (i + len(open_m), j)
+
+
+def _ensure_structure(text: str, is_root: bool) -> str:
+    """Idempotent ADOPTION: if the TRACKER markers are absent, wrap the existing body (below the H1)
+    as LEGACY and insert fresh empty REPO_ORDER (root only) + PLAN regions above it. Lossless."""
+    if PLAN_OPEN in text:                       # already structured
+        return text
+    lines = text.splitlines(keepends=True)
+    head = ""
+    rest = text
+    if lines and lines[0].lstrip().startswith("# "):
+        head = lines[0]
+        rest = "".join(lines[1:])
+    order_block = ""
+    if is_root:
+        order_block = (f"\n{ORDER_OPEN}\n{ORDER_HEADER}\n\n"
+                       f"This root owns no modules — it ROUTES. The loop reads this table for the ACTIVE "
+                       f"leaf, descends into that repo's context/progress-tracker.md + 6-file context + "
+                       f"docs/mirror. Status: ACTIVE / NEXT / QUEUED / BOOTED / n/a.\n\n"
+                       f"{TABLE_HEAD}\n{ORDER_CLOSE}\n")
+    plan_block = (f"\n{PLAN_OPEN}\n{PLAN_HEADER}\n{PLAN_CLOSE}\n")
+    legacy = ""
+    if rest.strip():
+        legacy = f"\n{LEGACY_OPEN}\n{rest.rstrip()}\n"
+    return f"{head}{order_block}{plan_block}{legacy}\n"
+
+
+def _read(path: Path) -> str:
+    return path.read_text() if path.exists() else "# Progress Tracker\n"
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def _parse_order(text: str) -> list[tuple[str, str, str]]:
+    """Parse REPO ORDER table rows into (repo, status, note). Ignores the header/separator rows."""
+    r = _region(text, ORDER_OPEN, ORDER_CLOSE)
+    if not r:
+        return []
+    body = text[r[0]:r[1]]
+    rows = []
+    for ln in body.splitlines():
+        ln = ln.strip()
+        if not ln.startswith("|"):
+            continue
+        cells = [c.strip() for c in ln.strip("|").split("|")]
+        if len(cells) < 4:
+            continue
+        if cells[0] in ("#", "") or set(cells[0]) <= set("-: "):   # header / separator
+            continue
+        repo = cells[1].strip().strip("`").strip()                 # strip backticks so render adds exactly one layer
+        rows.append((repo, cells[2], cells[3]))
+    return rows
+
+
+def _render_order(text: str, rows: list[tuple[str, str, str]]) -> str:
+    r = _region(text, ORDER_OPEN, ORDER_CLOSE)
+    table = [TABLE_HEAD]
+    for n, (repo, status, note) in enumerate(rows, 1):
+        table.append(f"| {n} | `{repo}` | {status} | {note} |")
+    intro = (f"{ORDER_HEADER}\n\nThis root owns no modules — it ROUTES. The loop reads this table for "
+             f"the ACTIVE leaf, descends into that repo's context/progress-tracker.md + 6-file context "
+             f"+ docs/mirror. Status: ACTIVE / NEXT / QUEUED / BOOTED / n/a.\n\n")
+    new_body = f"\n{intro}{chr(10).join(table)}\n"
+    return text[:r[0]] + new_body + text[r[1]:]
+
+
+def _plan_lines(text: str) -> list[str]:
+    r = _region(text, PLAN_OPEN, PLAN_CLOSE)
+    if not r:
+        return []
+    return [ln for ln in text[r[0]:r[1]].splitlines() if ln.strip().startswith("- ")]
+
+
+def _set_plan(text: str, lines: list[str]) -> str:
+    r = _region(text, PLAN_OPEN, PLAN_CLOSE)
+    body = f"\n{PLAN_HEADER}\n" + ("".join(l + "\n" for l in lines) if lines else "")
+    return text[:r[0]] + body + text[r[1]:]
+
+
+def cmd_register(args) -> int:
+    if args.leaf:
+        print("tracker: REPO ORDER is ROOT-only (leaf trackers hold only a PLAN).", file=sys.stderr)
+        return 2
+    text = _ensure_structure(_read(ROOT_TRACKER), is_root=True)
+    rows = _parse_order(text)
+    repo = args.repo.rstrip("/") + "/"
+    status = (args.status or "QUEUED").upper()
+    note = args.note or "not booted"
+    found = False
+    for k, (r, s, n) in enumerate(rows):
+        if r.strip("`").rstrip("/") + "/" == repo:
+            rows[k] = (repo, status, note); found = True; break
+    if not found:
+        rows.append((repo, status, note))
+    _write(ROOT_TRACKER, _render_order(text, rows))
+    print(f"registered `{repo}` status={status}" + ("" if found else " (new)"))
+    return 0
+
+
+def cmd_active(args) -> int:
+    text = _ensure_structure(_read(ROOT_TRACKER), is_root=True)
+    rows = _parse_order(text)
+    repo = args.repo.rstrip("/") + "/"
+    hit = False
+    for k, (r, s, n) in enumerate(rows):
+        if r.strip("`").rstrip("/") + "/" == repo:
+            rows[k] = (r, "ACTIVE", n); hit = True
+    if not hit:
+        print(f"tracker: `{repo}` is not in REPO ORDER — `tracker register {args.repo}` first.", file=sys.stderr)
+        return 2
+    _write(ROOT_TRACKER, _render_order(text, rows))
+    print(f"active → `{repo}`")
+    return 0
+
+
+def cmd_add(args) -> int:
+    path = tracker_path(args.leaf)
+    text = _ensure_structure(_read(path), is_root=(path == ROOT_TRACKER))
+    ref = args.ref
+    if not ref.startswith("vision:"):
+        ref = "vision:" + ref
+    repo = (args.repo + " ") if args.repo else ""
+    note = (" — " + args.note) if args.note else ""
+    line = f"- [ ] {repo}{ref}{note}"
+    lines = _plan_lines(text)
+    if line in lines:                              # exact-line dedup (same ref + different note is allowed:
+        print(f"tracker: that exact PLAN pointer already exists (not duplicated).", file=sys.stderr)
+        return 0                                    # two distinct plan items may point at one vision file)
+    lines.append(line)
+    _write(path, _set_plan(text, lines))
+    print(f"plan += {line}")
+    return 0
+
+
+def cmd_strike(args) -> int:
+    path = tracker_path(args.leaf)
+    text = _read(path)
+    if PLAN_OPEN not in text:
+        print("tracker: no PLAN region yet.", file=sys.stderr); return 2
+    lines = _plan_lines(text)
+    keep = [l for l in lines if args.ref not in l]
+    if len(keep) == len(lines):
+        print(f"tracker: no PLAN pointer matching {args.ref}.", file=sys.stderr); return 2
+    _write(path, _set_plan(text, keep))
+    print(f"struck {len(lines) - len(keep)} pointer(s) matching {args.ref} (gap closed → built)")
+    return 0
+
+
+def cmd_show(args) -> int:
+    path = tracker_path(args.leaf)
+    text = _read(path)
+    for label, om, cm in (("REPO ORDER", ORDER_OPEN, ORDER_CLOSE), ("PLAN", PLAN_OPEN, PLAN_CLOSE)):
+        r = _region(text, om, cm)
+        if r:
+            print(text[r[0]:r[1]].strip() + "\n")
+    if "TRACKER:LEGACY" in text:
+        print("(+ a LEGACY section preserved below the canonical regions — migrate to vision(m) incrementally.)")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="tracker", description="doc-mirror progress-tracker actuator")
+    ap.add_argument("--leaf", help="target this repo's leaf tracker instead of ROOT")
+    ap.add_argument("--where", action="store_true", help="print the tracker path and exit")
+    sub = ap.add_subparsers(dest="cmd")
+
+    s = sub.add_parser("register"); s.add_argument("repo"); s.add_argument("--status"); s.add_argument("--note")
+    s = sub.add_parser("active"); s.add_argument("repo")
+    s = sub.add_parser("add"); s.add_argument("ref"); s.add_argument("--repo"); s.add_argument("--note")
+    s = sub.add_parser("strike"); s.add_argument("ref")
+    sub.add_parser("show")
+
+    args = ap.parse_args()
+    if args.where:
+        print(tracker_path(args.leaf)); return 0
+    cmd = args.cmd or "show"
+    return {
+        "register": cmd_register, "active": cmd_active, "add": cmd_add,
+        "strike": cmd_strike, "show": cmd_show,
+    }[cmd](args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

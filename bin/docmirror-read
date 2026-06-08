@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""
+docmirror-read — the doc-mirror CartON READ LAYER (system-facing lookup CLIs).
+
+The doc-mirror CLIs were WRITE-ONLY to CartON: `journal` deposits a SOUP mereology
+(entry nodes + typed axis nodes repo/domain/subdomain over IS_A / PART_OF / INSTANTIATES /
+RELATED_TO) but NOTHING read it back — so the cursor was a hand-cranked flat string that
+could not represent repo hierarchy or cross-repo hyperedges. This CLI is the read side:
+each lookup is a TYPED TRAVERSAL over the UARL core-sentence predicates the graph already
+carries. Engine = direct neo4j (read-only Cypher), matching what the carton MCP's
+query_wiki_graph runs (carton_utils.py:868) — a standalone CLI cannot call the MCP tool, so
+it connects to the same neo4j via the NEO4J_* env. READ-ONLY: write keywords are refused.
+
+Depends on the TYPED AXIS NODES emitted by `journal` (is_a Doc_Mirror_Repo/_Domain/_Subdomain)
+— so coverage is the set of entries journaled since that emission landed (step a). A schema
+change in `journal` IS a query change here (see edit-the-journal-schema, Part-2 #5).
+
+Lookups (the 6; 1/3/4/6 buildable NOW — 2 active-leaf needs the tracker-in-graph, 5 closure
+needs CA :File/doc(m) nodes):
+  locate              #1  where-am-I: most recent entry → its repo + domain/subdomain (graph-derived)
+  vision  <selector>  #3  entries about a coordinate: --tag T | --subdomain SD | --domain D
+  cross   [--limit]   #4  cross-pollination: entries reaching >=2 distinct repos (the hyperedges)
+  network <concept>   #6  fuzzy-mereo: the n-hop neighborhood of a concept (--depth 1..3)
+
+Usage:
+  docmirror-read locate
+  docmirror-read vision --tag read-layer
+  docmirror-read vision --subdomain Read_Layer_Build --limit 20
+  docmirror-read cross
+  docmirror-read network Doc_Mirror_Read_Layer --depth 2
+  add --json to any for machine-readable output.
+
+NEO4J connection: $NEO4J_URI (default bolt://host.docker.internal:7687), $NEO4J_USER, $NEO4J_PASSWORD.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+
+NEO4J_URI = os.getenv("NEO4J_URI", "bolt://host.docker.internal:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
+
+_WRITE = re.compile(r"\b(CREATE|MERGE|DELETE|DETACH|SET|REMOVE|DROP|CALL\s*\{[^}]*(CREATE|MERGE))\b", re.I)
+
+
+def _norm_seg(s: str) -> str:
+    """Title_Case_With_Underscores — the SAME normalization journal applies to tags/axis nodes when it
+    writes them (journal:_norm_seg). A selector MUST be normalized to match the stored node name
+    (e.g. the tag 'read-layer' is stored as the node 'Read_Layer'); without this, vision --tag misses."""
+    words = [w for w in re.split(r"[^A-Za-z0-9]+", s.strip()) if w]
+    return "_".join(w[:1].upper() + w[1:] for w in words) or s
+
+
+def _run(cypher: str, **params):
+    """Run a read-only Cypher against the :Wiki graph; return list[dict]. Refuses writes (defense
+    in depth — this CLI only ever builds MATCH...RETURN, but never let a write through)."""
+    if _WRITE.search(cypher):
+        print("docmirror-read: refused — read layer is READ-ONLY (no CREATE/MERGE/DELETE/SET).",
+              file=sys.stderr)
+        sys.exit(2)
+    try:
+        from neo4j import GraphDatabase
+    except ImportError:
+        print("docmirror-read: the 'neo4j' driver is not installed.", file=sys.stderr)
+        sys.exit(3)
+    drv = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    try:
+        with drv.session() as s:
+            return [dict(r) for r in s.run(cypher, **params)]
+    finally:
+        drv.close()
+
+
+def _emit(rows, as_json, headline, empty="(none)"):
+    if as_json:
+        print(json.dumps(rows, indent=2, default=str))
+        return
+    if headline:
+        print(headline)
+    if not rows:
+        print(f"  {empty}")
+        return
+    for row in rows:
+        print("  " + "  ".join(f"{k}={row[k]}" for k in row))
+
+
+# ── #1 locate — where-am-I (graph-derived, replaces the hand-cranked cursor string) ─────────
+def cmd_locate(a):
+    cy = """
+    MATCH (e:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'})
+    WITH e ORDER BY e.t DESC LIMIT 1
+    OPTIONAL MATCH (e)-[:PART_OF]->(r:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Repo'})
+    OPTIONAL MATCH (e)-[:PART_OF]->(sd:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Subdomain'})
+    OPTIONAL MATCH (sd)-[:PART_OF]->(d:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Domain'})
+    RETURN e.n AS latest_entry, toString(e.t) AS ts, r.n AS repo, d.n AS domain, sd.n AS subdomain
+    """
+    _emit(_run(cy), a.json, "📍 locate (where-am-I, graph-derived):",
+          empty="(no typed journal entries yet — journal one to seed the graph)")
+
+
+# ── #3 vision-by-coordinate — entries about a tag / subdomain / domain ──────────────────────
+def cmd_vision(a):
+    lim = a.limit
+    if a.tag:
+        cy = """
+        MATCH (e:Wiki)-[:RELATED_TO]->(:Wiki {n:$val})
+        RETURN e.n AS entry, substring(e.d,0,160) AS preview, toString(e.t) AS ts
+        ORDER BY e.t DESC LIMIT $lim
+        """
+        sel = f"tag={a.tag}"; val = a.tag
+    elif a.subdomain:
+        cy = """
+        MATCH (e:Wiki)-[:PART_OF]->(:Wiki {n:$val})-[:IS_A]->(:Wiki {n:'Doc_Mirror_Subdomain'})
+        RETURN e.n AS entry, substring(e.d,0,160) AS preview, toString(e.t) AS ts
+        ORDER BY e.t DESC LIMIT $lim
+        """
+        sel = f"subdomain={a.subdomain}"; val = a.subdomain
+    elif a.domain:
+        cy = """
+        MATCH (e:Wiki)-[:PART_OF]->(:Wiki)-[:PART_OF]->(:Wiki {n:$val})-[:IS_A]->(:Wiki {n:'Doc_Mirror_Domain'})
+        RETURN e.n AS entry, substring(e.d,0,160) AS preview, toString(e.t) AS ts
+        ORDER BY e.t DESC LIMIT $lim
+        """
+        sel = f"domain={a.domain}"; val = a.domain
+    else:
+        print("docmirror-read vision: need one of --tag / --subdomain / --domain", file=sys.stderr)
+        sys.exit(2)
+    val = _norm_seg(val)   # match the stored node name (journal Title_Cases tags + axis nodes)
+    _emit(_run(cy, val=val, lim=lim), a.json, f"🔎 vision-by-coordinate ({sel} → {val}):")
+
+
+# ── #4 cross-pollination — entries reaching >=2 distinct repos (the emergent hyperedges) ─────
+def cmd_cross(a):
+    cy = """
+    MATCH (e:Wiki)-[:PART_OF|RELATED_TO*1..3]->(r:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Repo'})
+    WITH e, collect(DISTINCT r.n) AS repos
+    WHERE size(repos) >= 2
+    RETURN e.n AS entry, repos, substring(e.d,0,120) AS preview
+    ORDER BY size(repos) DESC, e.n LIMIT $lim
+    """
+    _emit(_run(cy, lim=a.limit), a.json, "🔗 cross-pollination (entries joining >=2 repos):",
+          empty="(no cross-repo hyperedges yet — they appear once entries span >=2 typed repos)")
+
+
+# ── #6 fuzzy-mereo — the n-hop neighborhood of a concept ────────────────────────────────────
+def cmd_network(a):
+    depth = max(1, min(3, a.depth))   # bound 1..3 (matches carton get_concept_network)
+    cy = f"""
+    MATCH p=(c:Wiki {{n:$concept}})-[*1..{depth}]-(m:Wiki)
+    RETURN DISTINCT m.n AS node, min(length(p)) AS hops
+    ORDER BY hops, node LIMIT $lim
+    """
+    _emit(_run(cy, concept=a.concept, lim=a.limit), a.json,
+          f"🕸  network of {a.concept} (<= {depth} hops):",
+          empty=f"(no node named {a.concept}, or it has no neighbors)")
+
+
+def main(argv):
+    p = argparse.ArgumentParser(prog="docmirror-read", description="doc-mirror CartON read layer")
+    p.add_argument("--json", action="store_true", help="machine-readable JSON output")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("locate", help="#1 where-am-I (graph-derived)")
+
+    pv = sub.add_parser("vision", help="#3 entries about a coordinate")
+    pv.add_argument("--tag"); pv.add_argument("--subdomain"); pv.add_argument("--domain")
+    pv.add_argument("--limit", type=int, default=15)
+
+    pc = sub.add_parser("cross", help="#4 cross-pollination")
+    pc.add_argument("--limit", type=int, default=25)
+
+    pn = sub.add_parser("network", help="#6 fuzzy-mereo neighborhood")
+    pn.add_argument("concept")
+    pn.add_argument("--depth", type=int, default=1)
+    pn.add_argument("--limit", type=int, default=40)
+
+    a = p.parse_args(argv[1:])
+    {"locate": cmd_locate, "vision": cmd_vision, "cross": cmd_cross, "network": cmd_network}[a.cmd](a)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

@@ -1,0 +1,8 @@
+{
+  "name": "doc-mirror",
+  "version": "1.0.0",
+  "description": "The doc-mirror claude system: a 1:1 documentation mirror of any codebase, maintained by an invariant doc-mirror STATE MACHINE (per-module doc(m), 6 context/ index files, fork-on-change, no random documents). Bundles doc-mirror-boot (entry + core-loop prime + router), the doc-mirror-{init,seework,change,prompts} state-skills, doc-mirror-install (the host-setup WIZARD), ship-a-plugin (the build+distribute dev-flow), doc-mirror (THE LAW), and make-ai-operating-system (the architect for new systems of this class); the brainhook work-loop + session-start + transition-guard + readonly-guard hooks (plugin-native via CLAUDE_PLUGIN_ROOT); the journal/projects/vision/plan/tracker/commit/cursor + docmirror-search CLI tools; and the doc-mirror law + behavior rules.",
+  "author": {
+    "name": "Isaac Rubin"
+  }
+}

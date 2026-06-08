@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+import ast, json, sys
+from pathlib import Path
+# EMERGENT architecture-stack layering for a doc-mirror repo.
+# Runtime modules bucket by intra-package import depth (L1=leaves..LN=outer facades).
+# Foundation data (.pl/.owl/.ttl) = L0. Tests = separate "T" band (cross-cutting, not a stack layer).
+repo = Path(sys.argv[1])
+man = repo/"docs/mirror/_MANIFEST.txt"
+mods=[l.strip()[2:] for l in man.read_text().splitlines() if l.strip().startswith("./")]
+def is_test(m): return "/tests/" in f"/{m}" or m.split("/")[-1].startswith("test_") or m.split("/")[-1].endswith("_test.py")
+tests=[m for m in mods if is_test(m)]
+rest=[m for m in mods if m not in tests]
+py=[m for m in rest if m.endswith(".py")]
+found=[m for m in rest if m.rsplit(".",1)[-1] in ("pl","owl","ttl")]
+name2rel={}
+for m in py:
+    p=m[:-3].split("/"); name2rel[".".join(p)]=m; name2rel[p[-1]]=m
+    if p[-1]=="__init__": name2rel[".".join(p[:-1])]=m
+deps={m:set() for m in py}
+for m in py:
+    try: tree=ast.parse((repo/m).read_text())
+    except Exception: continue
+    top=m.split("/")[0]
+    for n in ast.walk(tree):
+        if isinstance(n,ast.ImportFrom) and n.module and (n.module.startswith(top) or (n.level and n.level>0)):
+            for key in (n.module, n.module.split(".")[-1], f"{top}.{n.module}"):
+                if key in name2rel and name2rel[key]!=m: deps[m].add(name2rel[key])
+            for a in n.names:
+                k=f"{n.module}.{a.name}"
+                if k in name2rel and name2rel[k]!=m: deps[m].add(name2rel[k])
+        elif isinstance(n,ast.Import):
+            for a in n.names:
+                if a.name in name2rel and name2rel[a.name]!=m: deps[m].add(name2rel[a.name])
+def depth(m,seen=frozenset()):
+    if m in seen or not deps.get(m): return 0
+    return 1+max((depth(d,seen|{m}) for d in deps[m]),default=0)
+layers={}
+if found: layers["0"]=sorted(found)
+for m in py: layers.setdefault(str(depth(m)+1),[]).append(m)
+# renumber runtime layers contiguously above 0
+runtime=sorted((int(k) for k in layers if k!="0"))
+remap={old:i+1 for i,old in enumerate(runtime)}
+out={}
+if "0" in layers: out["0"]=sorted(layers["0"])
+for k in layers:
+    if k=="0": continue
+    out[str(remap[int(k)])]=sorted(layers[k])
+if tests: out["T"]=sorted(tests)
+(repo/"docs/mirror/_LAYERS.json").write_text(json.dumps(out,indent=2)+"\n")
+for k in (["0"] if "0" in out else [])+[str(i) for i in range(1,len(runtime)+1)]+(["T"] if tests else []):
+    if k in out: print(f"L{k} ({len(out[k])}): "+", ".join(x.split('/')[-1] for x in out[k]))

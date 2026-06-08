@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# doc-mirror-commit — the dumb fork-on-change commit helper.
+#
+# Commits a module change TOGETHER WITH its re-derived doc(m), atomically, with a
+# structured explanation message. It ENFORCES the convention; it supplies NO meaning.
+# The AGENT re-derives doc(m) (semantic work). This script only commits it cleanly.
+# No LLM, no auto-explain — pure git plumbing. (See SKILL.md "FORK-ON-CHANGE".)
+#
+# Run from the codebase root C being mirrored.
+# Usage:
+#   doc-mirror-commit <module-relpath> "<what changed>" ["<why>"] ["<origin>"]
+# Example:
+#   doc-mirror-commit soma_prolog/core.py "surface ONT in report" "core-sentence port" "vision:soma_prolog/core.py"
+#
+# ORIGIN INVARIANT (HARD): every CODE-changing commit must reference its origin — a VISION it realizes
+# (incl. refactors — a refactor is a vision) OR a BUG it fixes (a GitHub issue). A code change with
+# NEITHER is probably trash and is REFUSED. Supply origin as the 4th arg ("vision:<relpath-or-topic>"
+# or "fixes #N" / "bug:#N"), OR put it in a journal line that rolls up (contains "vision:" or "#<n>" or
+# "fixes #"). Realizing a vision should GRADUATE that idea vision(m)->doc(m) (it is now built).
+# (Doc-only commits — a re-derivation with no code change — need no origin; they are upkeep, in history.)
+#
+# JOURNAL ROLLUP: if you OMIT "<why>", the commit body is auto-filled by rolling up this repo's
+# journal (context/journal/YYYY-MM.md) lines added since the last commit — so you write the
+# thinking ONCE (via `journal "..."`) and it projects into the commit message. Passing "<why>"
+# explicitly overrides the rollup. The thinklog is the source of record; the commit msg is its
+# changelog projection.
+#
+# Convention enforced:
+#   - must be inside a git repo
+#   - doc(m) path = docs/mirror/<module-relpath>.md
+#   - REFUSES to commit a code change whose doc(m) was NOT re-derived (anti-drift)
+#   - allows a doc-only commit (a re-derivation / fix with no code change)
+#   - one module per commit (clean per-module lineage)
+# Exit: 0 committed/nothing-to-do · 1 usage/not-a-repo · 2 refused (doc not re-derived)
+
+set -euo pipefail
+
+MODULE="${1:-}"
+WHAT="${2:-}"
+WHY="${3:-}"
+ORIGIN="${4:-}"
+if [ -z "$MODULE" ] || [ -z "$WHAT" ]; then
+  echo 'usage: doc-mirror-commit <module-relpath> "<what changed>" ["<why>"] ["<origin>"]' >&2
+  exit 1
+fi
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "ERROR: not in a git repo" >&2; exit 1; }
+
+DOC="docs/mirror/${MODULE}.md"
+
+# returns 0 if path has staged, unstaged, or untracked changes
+changed() {
+  if ! git diff --quiet -- "$1" 2>/dev/null; then return 0; fi
+  if ! git diff --cached --quiet -- "$1" 2>/dev/null; then return 0; fi
+  if [ -n "$(git ls-files --others --exclude-standard -- "$1" 2>/dev/null)" ]; then return 0; fi
+  return 1
+}
+
+MOD_CHANGED=false
+if [ -e "$MODULE" ] && changed "$MODULE"; then MOD_CHANGED=true; fi
+DOC_CHANGED=false
+if [ -e "$DOC" ] && changed "$DOC"; then DOC_CHANGED=true; fi
+
+# anti-drift: code changed but its doc was not re-derived
+if $MOD_CHANGED && ! $DOC_CHANGED; then
+  echo "REFUSED: '$MODULE' changed but its doc '$DOC' was not re-derived." >&2
+  echo "  Re-derive $DOC from the changed module, then run this again." >&2
+  exit 2
+fi
+if ! $MOD_CHANGED && ! $DOC_CHANGED; then
+  echo "Nothing to commit for '$MODULE' (neither module nor its doc changed)."
+  exit 0
+fi
+
+[ -e "$MODULE" ] && git add -- "$MODULE"
+[ -e "$DOC" ] && git add -- "$DOC"
+
+# JOURNAL ROLLUP: the commit message is a PROJECTION of the thinklog — you write the thinking
+# ONCE via `journal`, it rolls up here. Pull this repo's journal lines added since the last
+# commit (the thinklog is the source; this is the changelog projecting from it). If $WHY is given
+# it takes precedence (explicit override); else the rollup is the why.
+ROLLUP=""
+JRNL="context/journal/$(date +%Y-%m).md"
+if [ -f "$JRNL" ]; then
+  # lines in the current journal file that are NOT in the version at HEAD = added since last commit
+  if git cat-file -e "HEAD:$JRNL" 2>/dev/null; then
+    # diff exits 1 when files differ (the normal case) — guard so `set -e` does not abort here
+    ROLLUP="$( { diff <(git show "HEAD:$JRNL" 2>/dev/null) "$JRNL" || true; } 2>/dev/null | sed -n 's/^> //p')"
+  else
+    ROLLUP="$(cat "$JRNL")"  # journal not yet committed → all of it is "since last commit"
+  fi
+fi
+
+# ORIGIN INVARIANT (hard): a CODE change must DELIBERATELY reference a vision or a bug for THIS change.
+# Checked against the explicit ORIGIN arg + the explicit WHY arg ONLY — NOT the broad journal rollup
+# (the rollup is historical thinklog; matching origin tokens there would pass on stale text). Doc-only
+# commits are exempt.
+if $MOD_CHANGED; then
+  ORIGIN_TEXT="${ORIGIN} ${WHY}"
+  if ! printf '%s' "$ORIGIN_TEXT" | grep -qiE 'vision:|fixes #|bug:#|#[0-9]+|refactor:'; then
+    echo "REFUSED: code change to '$MODULE' has NO origin (no vision, no bug)." >&2
+    echo "  Every code-changing commit must realize a VISION (incl. a refactor) or fix a BUG." >&2
+    echo "  A code change with neither is probably trash. Provide one explicitly:" >&2
+    echo "    - 4th arg ORIGIN: \"vision:<relpath-or-topic>\" | \"refactor:<why>\" | \"fixes #<n>\" | \"bug:#<n>\"" >&2
+    echo "    - (the journal ROLLUP fills the commit body, but does NOT count as origin — origin must be deliberate)" >&2
+    echo "  If realizing a vision: also graduate that idea vision(m) -> doc(m) (it is now built)." >&2
+    exit 3
+  fi
+fi
+
+MSG="doc-mirror: ${MODULE} — ${WHAT}"
+ORIGIN_LINE=""
+[ -n "$ORIGIN" ] && ORIGIN_LINE="origin: ${ORIGIN}
+"
+if [ -n "$WHY" ]; then
+  BODY="${ORIGIN_LINE}why: ${WHY}
+
+doc(m): ${DOC} re-derived"
+elif [ -n "$ROLLUP" ]; then
+  BODY="why (rolled up from the thinklog since last commit):
+${ROLLUP}
+
+doc(m): ${DOC} re-derived"
+else
+  BODY="doc(m): ${DOC} re-derived"
+fi
+
+git commit -m "$MSG" -m "$BODY" >/dev/null
+echo "committed: $MSG"
+echo "lineage of $DOC:"
+git log --oneline -- "$DOC" | head -5

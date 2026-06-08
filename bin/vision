@@ -1,0 +1,630 @@
+#!/usr/bin/env python3
+"""
+vision — resolve the vision hyperedge: show every vision(m) entry tagged with X, across all repos.
+
+vision(m) entries carry `tags: [module, repo, concept, ...]`. The tag set IS the hyperedge; this tool
+resolves it — given a tag, it lights up every place that vision connects. (The write side is `journal
+-t VISION` / the team prompt; this is the read side.)
+
+Usage:
+  vision <tag>          show every vision entry whose tags contain <tag> (substring, case-insensitive)
+  vision --tags         list ALL tags in use, with how many entries carry each (the tag index)
+  vision --files <tag>  just the vision(m) file paths that contain <tag> (terse)
+  vision                with no arg: same as --tags
+  THE VIEW (the backlog — derived, always-true):
+  vision stats [filt]   backlog overview: gap counts grouped by project (+ totals)
+  vision project <name> one project's backlog: every gap (unbuilt append), grouped by vision file
+  vision diff <m>       the GAP for one module/topic = its DELTA (appends not in impl) = what's not built
+  THE CONTROL/MAINTENANCE ops:
+  vision check [all|f]  the vision-layer closure test (marker / unique ids / module HEADER==doc(m)); exit 1 on drift
+  vision migrate [all|f] lossless fixer: establish marker + ids, re-base a module HEADER to its doc(m)
+  vision rebase ...     COMMIT-time surgery (normally invoked by doc-mirror-commit --realizes)
+  vision resolve <name> print the resolved vision file path
+  THE REORG ops (tag-routed, lossless — never arbitrary split):
+  vision tag <f> vN +x -y   edit the tags on entry [vN] (stashes the prior set as was:[...]@ts)
+  vision graduate <relpath> --from <topic> --by-tags X,Y
+                        MOVE entries tagged X/Y from a topic INTO the built module's vision(m)
+                        (docs/mirror/<relpath>.md must exist) — how the mega-vision becomes modular
+
+Scans <root>/**/docs/vision/**/*.md (root derived: $DOCMIRROR_MONOREPO / ~/.docmirror_root / git
+toplevel / cwd — no hardcoded path). A vision "entry" = a markdown list item ('- ...') that has a
+`tags: [...]` clause; multi-line entries are joined until the next list item / heading.
+"""
+import os
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+
+def _monorepo() -> Path:
+    """The repo root the doc-mirror layer lives in. NO hardcoded container path: env override, else a
+    machine-local ~/.docmirror_root, else the git toplevel of cwd, else cwd."""
+    e = os.environ.get("DOCMIRROR_MONOREPO")
+    if e:
+        return Path(e)
+    cfg = Path.home() / ".docmirror_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            return Path(cfg.read_text().strip())
+    except Exception:
+        pass
+    try:
+        import subprocess
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if top:
+            return Path(top)
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+MONO = _monorepo()
+TAGS_RE = re.compile(r"tags:\s*\[([^\]]*)\]", re.IGNORECASE)
+
+# A module vision(m) = [HEADER: verbatim doc(m)] + this MARKER + [DELTA: id-tagged appends].
+# (Must match the journal CLI's VISION_DELTA_MARKER exactly — shared file format.)
+VISION_DELTA_MARKER = ("<!-- ===VISION DELTA: id-tagged appends below = the gap (`vision diff <m>`); "
+                       "`doc-mirror-commit --realizes <ids>` drops them on build === -->")
+VID_RE = re.compile(r"-\s*\[v(\d+)\]")
+
+
+def split_marker(text: str):
+    """Return (header, delta_text). No marker (legacy/topic) → ('', whole text) = all DELTA."""
+    if VISION_DELTA_MARKER in text:
+        head, _, delta = text.partition(VISION_DELTA_MARKER)
+        return head, delta
+    return "", text
+
+
+def delta_items(delta_text: str):
+    """The id-tagged append lines of a DELTA section (the gap)."""
+    return [l.strip() for l in delta_text.splitlines() if l.strip().startswith("- [v")]
+
+
+def _content_lines(text: str) -> set:
+    """Normalized content lines: drop blanks + the MARKER, strip any '[vN]' id prefix, collapse
+    whitespace. Used to PROVE migration is lossless — every OLD content line must survive in the NEW
+    file (vision info only MOVES or gains a doc(m) HEADER; it is never deleted)."""
+    out = set()
+    for l in text.splitlines():
+        s = l.strip()
+        if not s or s == VISION_DELTA_MARKER:
+            continue
+        s = re.sub(r"^-\s*\[v\d+\]\s*", "- ", s)     # "- [v3]  foo" -> "- foo"
+        out.add(re.sub(r"\s+", " ", s))
+    return out
+
+
+def resolve_vision_file(arg: str):
+    """Locate the vision file for a module-relpath, a topic name, or a direct path. Tolerates a
+    trailing '.md' and a leading '_' (so `_thing`, `_thing.md`, `mod/x.py`, `mod/x.py.md` all work)."""
+    p = Path(arg)
+    if p.is_file():
+        return p
+    base = arg[:-3] if arg.endswith(".md") else arg
+    for pat in (f"**/docs/vision/{base}.md", f"**/docs/vision/{base}"):
+        hits = [h for h in MONO.glob(pat) if "/_archive/" not in str(h)]
+        if hits:
+            return hits[0]
+    slug = base.strip().lower().replace("/", "-").replace(" ", "-")
+    hits = [h for h in MONO.glob(f"**/docs/vision/_{slug}.md") if "/_archive/" not in str(h)]
+    return hits[0] if hits else None
+
+
+def cmd_diff(arg: str):
+    """vision diff <m> — the DELTA (appends not in impl) = exactly what is wanted but not built."""
+    vf = resolve_vision_file(arg)
+    if vf is None:
+        print(f"no vision file for '{arg}' (try `vision --tags` for the index)")
+        return 0
+    _, delta = split_marker(vf.read_text())
+    items = delta_items(delta)
+    rel = vf.relative_to(MONO) if MONO in vf.parents else vf
+    if not items:
+        print(f"GAP {rel}: empty — vision == impl (nothing left to build for this module).")
+        return 0
+    print(f"GAP {rel} — {len(items)} unbuilt vision append(s) (the diff vision↔impl):\n")
+    for it in items:
+        print(f"  {it}")
+    return 0
+
+
+def cmd_rebase(doc_path: str, vision_path: str, realize_ids: list):
+    """vision rebase --doc <p> --vision <p> [--realize ids] — the COMMIT-time surgery: rewrite the
+    vision file as [verbatim doc(m)] + MARKER + [DELTA minus realized ids]. Prints the realized append
+    lines to STDOUT (for the commit message); a summary to STDERR. This is how impl re-enters vision."""
+    vf = Path(vision_path)
+    existing = vf.read_text() if vf.exists() else ""
+    head, delta = split_marker(existing)
+    # --doc given → re-base HEADER to that doc(m); else PRESERVE the existing header (topic drop case).
+    if doc_path and Path(doc_path).exists():
+        doc_content = Path(doc_path).read_text().rstrip()
+    else:
+        doc_content = head.rstrip() if head.strip() else ""
+    realize = set(realize_ids)
+    realized, remaining, found = [], [], set()
+    for l in delta.splitlines():
+        s = l.strip()
+        if not s.startswith("- "):
+            continue
+        m = VID_RE.match(s)
+        vid = int(m.group(1)) if m else None
+        if vid is not None:
+            found.add(vid)
+        if vid is not None and vid in realize:
+            realized.append(s)
+        elif s:
+            remaining.append(s)
+    header = (doc_content + "\n\n") if doc_content else ""
+    body = ("\n".join(remaining) + "\n") if remaining else ""
+    vf.parent.mkdir(parents=True, exist_ok=True)
+    vf.write_text(f"{header}{VISION_DELTA_MARKER}\n{body}")
+    for r in realized:
+        print(r)  # stdout = the realized lines (commit message captures these)
+    missing = realize - found
+    print(f"rebased {vf}: HEADER<=doc(m); dropped {len(realized)} realized, {len(remaining)} remain"
+          + (f"; WARN ids not found: {sorted(missing)}" if missing else ""), file=sys.stderr)
+    return 0
+
+
+def paired_doc(vf: Path):
+    """The doc(m) a MODULE vision file is paired with (docs/mirror/<same-relpath>.md), or None for a
+    topic file (_<name>.md) or a module whose doc(m) does not exist."""
+    if vf.name.startswith("_"):
+        return None
+    cand = Path(str(vf).replace("/docs/vision/", "/docs/mirror/", 1))
+    return cand if cand.exists() else None
+
+
+def check_file(vf: Path):
+    """Return a list of invariant violations for one vision file ([] = OK)."""
+    issues = []
+    text = vf.read_text()
+    has_marker = VISION_DELTA_MARKER in text
+    if not has_marker:
+        issues.append("NO-MARKER")
+    head, delta = split_marker(text)
+    ids = [int(m) for m in VID_RE.findall(delta)]
+    if len(ids) != len(set(ids)):
+        issues.append("DUP-IDS")
+    if has_marker:
+        unided = sum(1 for l in delta.splitlines()
+                     if l.strip().startswith("- ") and not VID_RE.match(l.strip()))
+        if unided:
+            issues.append(f"UNIDED({unided})")
+    doc = paired_doc(vf)
+    if doc is not None and head.strip() != doc.read_text().strip():
+        issues.append("STALE-HEADER")   # the currency invariant: HEADER must == doc(m)
+    return issues
+
+
+def cmd_check(target=None):
+    """vision check [all|<file>] — the vision-layer closure test. Verifies every file has the MARKER,
+    unique [vN] ids, no un-ided appends, and (modules) HEADER==doc(m). Exit 1 if any drift."""
+    files = [resolve_vision_file(target)] if (target and target != "all") else vision_files()
+    files = [f for f in files if f]
+    bad = 0
+    for vf in files:
+        issues = check_file(vf)
+        rel = vf.relative_to(MONO) if MONO in vf.parents else vf
+        kind = "module" if paired_doc(vf) is not None else "topic"
+        if issues:
+            bad += 1
+            print(f"✗ [{kind}] {rel}  ->  {', '.join(issues)}")
+        else:
+            print(f"✓ [{kind}] {rel}")
+    print(f"\nvision check: {len(files) - bad}/{len(files)} OK"
+          + ("" if not bad else f"  — {bad} drifted; run `vision migrate all` to fix"))
+    return 1 if bad else 0
+
+
+def migrate_file(vf: Path) -> str:
+    """Make vf well-formed + current, LOSSLESSLY: establish the MARKER, re-base a module's HEADER to its
+    doc(m), and assign [vN] ids to any un-ided '- ' append. Non-list lines are preserved verbatim."""
+    text = vf.read_text()
+    doc = paired_doc(vf)
+    if VISION_DELTA_MARKER in text:
+        head, delta = split_marker(text)
+    elif doc is not None:                     # legacy module: doc(m) becomes HEADER, all else is DELTA
+        head, delta = "", text
+    else:                                      # legacy topic: leading title block is HEADER, rest DELTA
+        lines = text.splitlines()
+        hi = 0
+        while hi < len(lines) and not lines[hi].lstrip().startswith("- "):
+            hi += 1
+        head, delta = "\n".join(lines[:hi]), "\n".join(lines[hi:])
+    if doc is not None:                        # currency: HEADER := verbatim doc(m)
+        head = doc.read_text().rstrip()
+    used = {int(m) for m in VID_RE.findall(delta)}
+    nxt = (max(used) + 1) if used else 1
+    out = []
+    for l in delta.splitlines():
+        s = l.rstrip("\n")
+        st = s.strip()
+        if st.startswith("- ") and not VID_RE.match(st):
+            indent = s[:len(s) - len(s.lstrip())]
+            out.append(f"{indent}- [v{nxt}]  {st[2:].lstrip()}")
+            nxt += 1
+        else:
+            out.append(s)
+    body = "\n".join(out).strip("\n")
+    header = (head.rstrip() + "\n\n") if head.strip() else ""
+    new_text = f"{header}{VISION_DELTA_MARKER}\n" + (f"{body}\n" if body else "")
+    lost = _content_lines(text) - _content_lines(new_text)
+    if lost:
+        return ("LOSS", lost)          # REFUSE to write — vision info must never be lost
+    vf.write_text(new_text)
+    return ("migrated", None)
+
+
+def cmd_migrate(target=None):
+    """vision migrate [all|<file>] — fix drift (establish marker+ids, re-base module HEADER to doc(m))."""
+    files = [resolve_vision_file(target)] if (target and target != "all") else vision_files()
+    files = [f for f in files if f]
+    lossy = 0
+    for vf in files:
+        before = check_file(vf)
+        if not before:
+            continue
+        rel = vf.relative_to(MONO) if MONO in vf.parents else vf
+        status, detail = migrate_file(vf)
+        if status == "LOSS":
+            lossy += 1
+            print(f"✗ REFUSED (would lose vision lines) {rel}:")
+            for d in list(detail)[:5]:
+                print(f"      lost: {d[:100]}")
+            continue
+        after = check_file(vf)
+        print(f"migrated {rel}: {', '.join(before)} -> {', '.join(after) or 'OK'}")
+    print("\nvision migrate: done." + (f"  ⚠️ {lossy} REFUSED for potential loss — left untouched." if lossy else ""))
+    return 1 if lossy else 0
+
+
+def vision_files():
+    # every *.md under any docs/vision/ dir in the monorepo (skip the _archive trees)
+    return sorted(p for p in MONO.glob("**/docs/vision/**/*.md") if "/_archive/" not in str(p))
+
+
+def entries(path):
+    """Yield (entry_text, [tags]) for each list-item entry that has a tags:[...] clause.
+    An entry starts at a line beginning with '- ' and continues until the next '- ' / heading / blank-gap."""
+    try:
+        lines = path.read_text().splitlines()
+    except Exception:
+        return
+    buf = []
+    def flush():
+        if not buf:
+            return None
+        text = " ".join(l.strip() for l in buf).strip()
+        m = TAGS_RE.search(text)
+        if m:
+            tags = [t.strip() for t in m.group(1).split(",") if t.strip()]
+            return (text, tags)
+        return None
+    for ln in lines:
+        if ln.lstrip().startswith("- ") or ln.startswith("#"):
+            r = flush()
+            if r:
+                yield r
+            buf = [ln] if ln.lstrip().startswith("- ") else []
+        elif ln.strip() == "":
+            r = flush()
+            if r:
+                yield r
+            buf = []
+        else:
+            if buf:
+                buf.append(ln)
+    r = flush()
+    if r:
+        yield r
+
+
+def cmd_tags():
+    counts = {}
+    for f in vision_files():
+        for _text, tags in entries(f):
+            for t in tags:
+                counts[t] = counts.get(t, 0) + 1
+    if not counts:
+        print("(no tagged vision entries found under", MONO, ")")
+        return 0
+    print(f"TAGS IN USE ({len(counts)}) — <count>  <tag>:")
+    for t, c in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+        print(f"  {c:3d}  {t}")
+    return 0
+
+
+def cmd_resolve(tag, files_only=False):
+    q = tag.lower()
+    hits = []  # (file, text)
+    for f in vision_files():
+        for text, tags in entries(f):
+            if any(q in t.lower() for t in tags):
+                hits.append((f, text))
+    if not hits:
+        print(f"no vision entries tagged ~ '{tag}'. (try `vision --tags` for the index)")
+        return 0
+    if files_only:
+        for f in sorted({h[0] for h in hits}):
+            print(f.relative_to(MONO))
+        return 0
+    print(f"HYPEREDGE '{tag}' — {len(hits)} vision entr{'y' if len(hits)==1 else 'ies'} across "
+          f"{len({h[0] for h in hits})} file(s):\n")
+    cur = None
+    for f, text in hits:
+        if f != cur:
+            print(f"━━ {f.relative_to(MONO)}")
+            cur = f
+        # trim very long entries for the overview
+        t = text if len(text) <= 600 else text[:600] + " …"
+        print(f"  {t}\n")
+    return 0
+
+
+def _registry():
+    import json
+    reg = Path(os.environ.get("DOCMIRROR_PROJECTS", str(MONO / "doc-mirror-system" / "projects.json")))
+    try:
+        return json.loads(reg.read_text()).get("projects", {})
+    except Exception:
+        return {}
+
+
+def project_of(vf: Path) -> str:
+    """The repo that owns a vision file = the path before /docs/vision/, as a monorepo-relative name
+    (a registered project name if one matches, else the relpath)."""
+    s = str(vf)
+    i = s.find("/docs/vision/")
+    repo = Path(s[:i]) if i > 0 else vf.parent
+    for name, meta in _registry().items():
+        mp = Path(meta["path"]);  mp = mp if mp.is_absolute() else (MONO / mp)
+        if mp.resolve() == repo.resolve():
+            return name
+    try:
+        return str(repo.resolve().relative_to(MONO)) or "."
+    except Exception:
+        return str(repo)
+
+
+def gap_count(vf: Path) -> int:
+    _, delta = split_marker(vf.read_text())
+    return len(delta_items(delta))
+
+
+def cmd_stats(filt=None):
+    """vision stats [filter] — the BACKLOG overview: unbuilt appends (gaps) grouped by project."""
+    from collections import defaultdict
+    per = defaultdict(lambda: [0, 0, 0])   # project -> [gaps, files_with_gaps, files]
+    total = 0
+    for vf in vision_files():
+        p = project_of(vf)
+        if filt and filt not in p:
+            continue
+        n = gap_count(vf)
+        per[p][2] += 1
+        if n:
+            per[p][0] += n; per[p][1] += 1
+        total += n
+    if not per:
+        print(f"(no vision files{(' matching ' + filt) if filt else ''})"); return 0
+    print("VISION BACKLOG — unbuilt appends (gaps) = what is wanted but not built:\n")
+    for p in sorted(per, key=lambda k: -per[k][0]):
+        g, fw, ft = per[p]
+        print(f"  {g:5d} gaps   {fw:3d}/{ft:<3d} files   {p}")
+    print(f"\n  total: {total} gaps across {sum(v[2] for v in per.values())} vision files, {len(per)} project(s)")
+    return 0
+
+
+def cmd_gaps(filt=None):
+    """vision gaps [filter] — MACHINE-READABLE gap list (one per line): <relpath>\\tvN\\t<trunc text>.
+    The reconcile source for `plan check`; <relpath> is the part after docs/vision/."""
+    for vf in vision_files():
+        p = project_of(vf)
+        if filt and filt not in p and filt not in str(vf):
+            continue
+        rel = str(vf).split("/docs/vision/", 1)[-1]
+        _, delta = split_marker(vf.read_text())
+        for it in delta_items(delta):
+            m = VID_RE.match(it)
+            vid = ("v" + m.group(1)) if m else "v?"
+            text = re.sub(r"^-\s*\[v\d+\]\s*", "", it)[:80]
+            print(f"{rel}\t{vid}\t{text}")
+    return 0
+
+
+def cmd_project(name):
+    """vision project <name> — one project's backlog: every gap, grouped by vision file."""
+    files = [vf for vf in vision_files() if project_of(vf) == name or name in project_of(vf)]
+    if not files:
+        print(f"no vision files for project '{name}'. (try `vision stats` for the list of projects)")
+        return 0
+    shown = 0
+    for vf in sorted(files):
+        _, delta = split_marker(vf.read_text())
+        items = delta_items(delta)
+        if not items:
+            continue
+        shown += len(items)
+        rel = vf.relative_to(MONO) if MONO in vf.parents else vf
+        kind = "module" if paired_doc(vf) is not None else "topic"
+        print(f"━━ [{kind}] {rel}  ({len(items)} gap{'s' if len(items)!=1 else ''})")
+        for it in items:
+            print(f"  {it[:200]}{' …' if len(it) > 200 else ''}")
+        print()
+    print(f"{name}: {shown} gap(s) total" + ("" if shown else " — fully built (vision == impl)"))
+    return 0
+
+
+def cmd_tag(vf_arg, vid, adds, removes):
+    """vision tag <topic-or-relpath> vN [+tag] [-tag] — edit the tags on entry [vN] in a vision file,
+    STASHING the prior tag set as `was:[...]@ts` (history; never lost). Tags are routing labels; this
+    re-organizes WITHOUT moving anything — the entry stays put, only its labels change. (The MOVE is
+    `vision graduate`, and only ever into a built module.)"""
+    vf = resolve_vision_file(vf_arg)
+    if vf is None:
+        print(f"no vision file for '{vf_arg}'", file=sys.stderr); return 2
+    lines = vf.read_text().splitlines()
+    trg = re.compile(rf"-\s*\[v{int(vid)}\]")
+    hit = next((i for i, l in enumerate(lines) if trg.search(l.strip())), None)
+    if hit is None:
+        print(f"entry [v{vid}] not found in {vf}", file=sys.stderr); return 1
+    m = TAGS_RE.search(lines[hit])
+    old = [t.strip() for t in m.group(1).split(",") if t.strip()] if m else []
+    new = [t for t in old if t not in removes] + [a for a in adds if a not in old]
+    ts = datetime.now().isoformat(timespec="seconds")
+    if m:
+        lines[hit] = (TAGS_RE.sub(f"tags:[{', '.join(new)}]", lines[hit], count=1).rstrip()
+                      + f"  was:[{', '.join(old)}]@{ts}")
+    else:
+        lines[hit] = lines[hit].rstrip() + f"  tags:[{', '.join(new)}]"
+    vf.write_text("\n".join(lines) + "\n")
+    rel = vf.relative_to(MONO) if MONO in vf.parents else vf
+    print(f"[v{vid}] tags {old} -> {new}   in {rel}")
+    return 0
+
+
+def _repo_of_vision(vf: Path) -> Path:
+    s = str(vf); i = s.find("/docs/vision/")
+    return Path(s[:i]) if i > 0 else vf.parent
+
+
+def cmd_graduate(relpath, from_topic, by_tags):
+    """vision graduate <relpath> --from <topic> --by-tags X,Y — TAG-ROUTED graduation (the lossless
+    reorg). MOVE every entry in <topic> whose tags intersect {X,Y} INTO the module vision(m) at
+    <repo>/docs/vision/<relpath>.md, paired with docs/mirror/<relpath>.md — which MUST exist (graduation
+    needs the BUILT module; you cannot route vision into a module that has no code). Moved entries leave
+    the topic and re-appear (re-id'd) under the module's doc(m) HEADER. The mega-vision shrinks toward
+    empty as the system gets built — this is how the design becomes modular."""
+    topic_vf = resolve_vision_file(from_topic)
+    if topic_vf is None:
+        print(f"no topic vision file '{from_topic}'", file=sys.stderr); return 2
+    repo = _repo_of_vision(topic_vf)
+    rp = relpath if relpath.endswith(".md") else relpath + ".md"
+    doc = repo / "docs" / "mirror" / rp
+    if not doc.exists():
+        print(f"REFUSED: module doc(m) does not exist: {doc}\n  graduation needs the BUILT module first "
+              f"(create docs/mirror/{rp}), then route its vision in by tag.", file=sys.stderr)
+        return 1
+    mod_vf = repo / "docs" / "vision" / rp
+    want = set(by_tags)
+    th, tdelta = split_marker(topic_vf.read_text())
+    moved, remaining = [], []
+    for l in tdelta.splitlines():
+        s = l.strip()
+        if not s.startswith("- "):
+            if s:
+                remaining.append(s)
+            continue
+        mt = TAGS_RE.search(s)
+        etags = {t.strip() for t in mt.group(1).split(",")} if mt else set()
+        (moved if (etags & want) else remaining).append(s)
+    if not moved:
+        print(f"no entries in {topic_vf.name} tagged ~ {sorted(want)} — nothing to graduate.")
+        return 0
+    existing = mod_vf.read_text() if mod_vf.exists() else ""
+    _, mdelta = split_marker(existing)
+    used = {int(x) for x in VID_RE.findall(mdelta)}
+    nxt = (max(used) + 1) if used else 1
+    mod_lines = [l.strip() for l in mdelta.splitlines() if l.strip().startswith("- ")]
+    for s in moved:
+        body = re.sub(r"^-\s*\[v\d+\]\s*", "", s)   # strip the old per-topic id; re-id in the module
+        mod_lines.append(f"- [v{nxt}]  {body}")
+        nxt += 1
+    doc_header = doc.read_text().rstrip()
+    mod_new = f"{doc_header}\n\n{VISION_DELTA_MARKER}\n" + ("\n".join(mod_lines) + "\n" if mod_lines else "")
+    topic_new = ((th.rstrip() + "\n\n") if th.strip() else "") + f"{VISION_DELTA_MARKER}\n" \
+                + ("\n".join(remaining) + "\n" if remaining else "")
+    # lossless: every content line in the topic BEFORE must survive (in topic-after, module-after, or pre-existing module)
+    before = _content_lines(topic_vf.read_text())
+    after = _content_lines(topic_new) | _content_lines(mod_new) | _content_lines(existing)
+    lost = before - after
+    if lost:
+        print(f"REFUSED (would lose vision lines): {list(lost)[:3]}", file=sys.stderr); return 1
+    mod_vf.parent.mkdir(parents=True, exist_ok=True)
+    mod_vf.write_text(mod_new)
+    topic_vf.write_text(topic_new)
+    rel = mod_vf.relative_to(MONO) if MONO in mod_vf.parents else mod_vf
+    print(f"graduated {len(moved)} entr{'y' if len(moved)==1 else 'ies'} tagged {sorted(want)}: "
+          f"{topic_vf.name} -> {rel}  ({len(remaining)} remain in topic)")
+    return 0
+
+
+def main(argv):
+    args = argv[1:]
+    if args and args[0] in ("-h", "--help"):
+        print(__doc__); return 0
+    if not args or args[0] == "--tags":
+        return cmd_tags()
+    if args[0] == "--files":
+        if len(args) < 2:
+            print("vision --files <tag>", file=sys.stderr); return 2
+        return cmd_resolve(args[1], files_only=True)
+    if args[0] == "diff":
+        if len(args) < 2:
+            print("vision diff <module-relpath-or-topic>", file=sys.stderr); return 2
+        return cmd_diff(args[1])
+    if args[0] == "rebase":
+        opts, doc, vis, realize = args[1:], "", "", []
+        i = 0
+        while i < len(opts):
+            if opts[i] == "--doc" and i + 1 < len(opts):
+                doc = opts[i + 1]; i += 2
+            elif opts[i] == "--vision" and i + 1 < len(opts):
+                vis = opts[i + 1]; i += 2
+            elif opts[i] == "--realize" and i + 1 < len(opts):
+                realize = [int(x) for x in re.findall(r"\d+", opts[i + 1])]; i += 2
+            else:
+                i += 1
+        if not vis:
+            print("vision rebase --doc <docpath> --vision <visionpath> [--realize v3,v7]", file=sys.stderr)
+            return 2
+        return cmd_rebase(doc, vis, realize)
+    if args[0] == "resolve":
+        if len(args) < 2:
+            print("vision resolve <module-relpath-or-topic>", file=sys.stderr); return 2
+        vf = resolve_vision_file(args[1])
+        if vf is None:
+            return 1
+        print(vf)
+        return 0
+    if args[0] == "check":
+        return cmd_check(args[1] if len(args) > 1 else None)
+    if args[0] == "migrate":
+        return cmd_migrate(args[1] if len(args) > 1 else None)
+    if args[0] == "stats":
+        return cmd_stats(args[1] if len(args) > 1 else None)
+    if args[0] == "gaps":
+        return cmd_gaps(args[1] if len(args) > 1 else None)
+    if args[0] == "project":
+        if len(args) < 2:
+            print("vision project <name>", file=sys.stderr); return 2
+        return cmd_project(args[1])
+    if args[0] == "tag":
+        rest = args[1:]
+        if len(rest) < 2:
+            print("vision tag <topic-or-relpath> vN [+tag] [-tag] ...", file=sys.stderr); return 2
+        adds = [a[1:] for a in rest[2:] if a.startswith("+")]
+        removes = [a[1:] for a in rest[2:] if a.startswith("-")]
+        return cmd_tag(rest[0], re.sub(r"\D", "", rest[1]), adds, removes)
+    if args[0] == "graduate":
+        rest = args[1:]
+        relpath = rest[0] if rest and not rest[0].startswith("--") else None
+        topic, bytags, i = None, [], (1 if relpath else 0)
+        while i < len(rest):
+            if rest[i] == "--from" and i + 1 < len(rest):
+                topic = rest[i + 1]; i += 2
+            elif rest[i] == "--by-tags" and i + 1 < len(rest):
+                bytags = [t.strip() for t in rest[i + 1].split(",") if t.strip()]; i += 2
+            else:
+                i += 1
+        if not relpath or not topic or not bytags:
+            print("vision graduate <relpath> --from <topic> --by-tags X,Y", file=sys.stderr); return 2
+        return cmd_graduate(relpath, topic, bytags)
+    return cmd_resolve(args[0])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

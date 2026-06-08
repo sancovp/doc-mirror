@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""
+plan — the doc-mirror RETURN CHECKPOINT. Orientation, not a planning engine.
+
+Run it when you (Isaac) come back, or at the start of a work session. It does four things:
+  1. SHOW what happened since you left — recent global thinklog (decisions/findings) + git log + open queue.
+  2. SURFACE the OPEN forks waiting on you (lines tagged OPEN in the thinklog this month).
+  3. SET this session up — point the agent at the active repo's progress-tracker and tell it where its
+     thinklog lives ("check the progress-tracker; put this session's thinking in `journal`").
+  4. (optional) toggle the loop on/off via `docmirror-brainhook`.
+
+Usage:
+  plan                 orient: show thinking + git log + OPENs + projects state + where to start
+  plan opens           show ONLY the open forks awaiting a decision
+  plan on | off        toggle the doc-mirror brainhook loop (delegates to docmirror-brainhook)
+  plan status          loop on/off + projects state, terse
+  plan check [project] reconcile the PLAN (tracker pointers `vision:<ref>[#vN]`) vs the VIEW (vision gaps):
+                       reports planned-open / done (gap closed) / dangling / UNPLANNED — makes a manual
+                       plan's staleness mechanical (never silent)
+
+It NEVER decides anything or edits the queue — it shows you the state and tells the agent where to begin.
+The queue itself lives in the progress-tracker; the thinking lives in the journal; this just orients.
+"""
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+def _monorepo() -> Path:
+    """Repo root, NO hardcoded path: env → ~/.docmirror_root → git toplevel → cwd."""
+    e = os.environ.get("DOCMIRROR_MONOREPO")
+    if e:
+        return Path(e)
+    cfg = Path.home() / ".docmirror_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            return Path(cfg.read_text().strip())
+    except Exception:
+        pass
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if top:
+            return Path(top)
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+MONOREPO = _monorepo()
+ROOT_TRACKER = MONOREPO / "context" / "progress-tracker.md"
+GLOBAL_JOURNAL_DIR = Path(os.environ.get("DOCMIRROR_JOURNAL_DIR", MONOREPO / "context" / "journal"))
+STATE_FILE = Path("/tmp/docmirror_brainhook_state.txt")
+
+
+def sh(cmd: list, cwd=None) -> str:
+    try:
+        return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception as e:
+        return f"(error: {e})"
+
+
+def this_month_journal() -> Path:
+    return GLOBAL_JOURNAL_DIR / f"{datetime.now():%Y-%m}.md"
+
+
+def journal_lines() -> list:
+    f = this_month_journal()
+    if not f.exists():
+        return []
+    return [l for l in f.read_text().splitlines() if l.strip()]
+
+
+def loop_state() -> str:
+    try:
+        return STATE_FILE.read_text().strip().lower() if STATE_FILE.exists() else "off"
+    except Exception:
+        return "off"
+
+
+def show_opens() -> int:
+    opens = [l for l in journal_lines() if "OPEN:" in l]
+    if not opens:
+        print("✅ no OPEN forks awaiting you.")
+        return 0
+    print(f"⏳ {len(opens)} OPEN fork(s) awaiting your decision:\n")
+    for l in opens:
+        print(f"  {l}")
+    return 0
+
+
+def cmd_status():
+    print(f"loop: {loop_state().upper()}")
+    print(sh(["projects", "list"]))
+
+
+def cmd_orient():
+    print("=" * 78)
+    print("  PLAN — doc-mirror return checkpoint  (" + datetime.now().isoformat(timespec="seconds") + ")")
+    print("=" * 78)
+
+    print(f"\n▶ LOOP: {loop_state().upper()}   (toggle: `plan on` / `plan off`)")
+
+    print("\n▶ PROJECTS (live state — init/closed/current computed, not stored):")
+    print(sh(["projects", "list"]))
+
+    print("\n▶ RECENT THINKING (global thinklog tail — what we decided/found):")
+    lines = journal_lines()
+    if lines:
+        for l in lines[-12:]:
+            print(f"  {l}")
+    else:
+        print("  (no thinklog entries this month yet — `journal \"...\"` to start)")
+
+    print("\n▶ OPEN FORKS awaiting your decision:")
+    opens = [l for l in lines if "OPEN:" in l]
+    if opens:
+        for l in opens:
+            print(f"  {l}")
+    else:
+        print("  (none)")
+
+    print("\n▶ RECENT CHANGES (git log, last 10):")
+    print(sh(["git", "log", "-10", "--format=  %h %cd %s", "--date=format:%m-%d %H:%M"], cwd=MONOREPO))
+
+    print("\n▶ WHERE TO START THIS SESSION:")
+    print(f"  1. Read the ROOT queue: {ROOT_TRACKER}  (REPO ORDER → active repo)")
+    print(f"  2. Descend to that repo's context/progress-tracker.md + its doc(m)s.")
+    print(f"  3. As you think/decide: `journal \"...\"` (per-repo + global; OPEN forks → sleep, echoes to Isaac).")
+    print(f"  4. Equip the `doc-mirror` skill. Arm the loop with `plan on` when ready to run unattended.")
+    print("=" * 78)
+    return 0
+
+
+def cmd_check(args):
+    """plan check [project] — RECONCILE the plan (tracker pointers) against the VIEW (vision gaps).
+    A tracker plan pointer is `vision:<relpath-or-topic>[#vN]`. Reports: planned-open, done (pointer's
+    gap is closed → drop it), dangling (pointer resolves to no vision file), UNPLANNED (a gap with no
+    pointer). The plan is MANUAL; this makes its staleness mechanical, never silent."""
+    project = args[0] if args else None
+    if project:
+        ppath = sh(["projects", "path", project])
+        root = Path(ppath) if ppath and Path(ppath).exists() else (MONOREPO / project)
+        tracker = root / "context" / "progress-tracker.md"
+        scope = [project]
+    else:
+        tracker = ROOT_TRACKER
+        scope = []
+    # gaps (the view) — (relpath_noext, vN) -> text
+    gaps = {}
+    for line in sh(["vision", "gaps"] + scope).splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            rel = parts[0][:-3] if parts[0].endswith(".md") else parts[0]
+            gaps[(rel, parts[1])] = parts[2] if len(parts) > 2 else ""
+    gap_rels = {r for (r, _) in gaps}
+    # pointers (the plan) — vision:<ref>[#vN]
+    ttext = tracker.read_text() if tracker.exists() else ""
+    ptrs = re.findall(r"vision:([^\s#)\]]+)(?:#(v\d+))?", ttext)
+    planned, done, dangling = set(), [], []
+    open_n = 0
+    for ref, vid in ptrs:
+        ref = ref[:-3] if ref.endswith(".md") else ref
+        matches = [r for r in gap_rels if r == ref or r.endswith("/" + ref) or ref.endswith(r) or r.endswith(ref)]
+        resolves = bool(sh(["vision", "resolve", ref]))
+        if vid:
+            hit = [r for r in matches if (r, vid) in gaps]
+            if hit:
+                open_n += 1; planned.update((r, vid) for r in hit)
+            else:
+                (done if resolves else dangling).append(f"vision:{ref}#{vid}")
+        else:
+            if matches:
+                open_n += 1; planned.update((r, v) for (r, v) in gaps if r in matches)
+            else:
+                (done if resolves else dangling).append(f"vision:{ref}")
+    unplanned = [(r, v, gaps[(r, v)]) for (r, v) in gaps if (r, v) not in planned]
+    print(f"PLAN CHECK — {('project ' + project) if project else 'ROOT'} tracker: {tracker}")
+    print(f"  gaps:{len(gaps)}  planned-open:{len(planned)}  done(realized):{len(done)}  "
+          f"dangling:{len(dangling)}  UNPLANNED:{len(unplanned)}")
+    if done:
+        print("\n  ✅ DONE — tracker pointer whose gap is closed (drop it):")
+        for d in done[:20]:
+            print(f"     {d}")
+    if dangling:
+        print("\n  ⚠️ DANGLING — pointer resolves to no vision file:")
+        for d in dangling[:20]:
+            print(f"     {d}")
+    if unplanned:
+        print(f"\n  ◻ UNPLANNED — {len(unplanned)} gap(s) with no tracker pointer:")
+        for (r, v, t) in unplanned[:30]:
+            print(f"     vision:{r}#{v}  {t[:66]}")
+    return 1 if (dangling or done) else 0
+
+
+def main(argv):
+    args = argv[1:]
+    if args and args[0] in ("-h", "--help"):
+        print(__doc__); return 0
+    if not args:
+        return cmd_orient()
+    cmd = args[0]
+    if cmd == "check":
+        return cmd_check(args[1:])
+    if cmd == "opens":
+        return show_opens()
+    if cmd == "status":
+        cmd_status(); return 0
+    if cmd in ("on", "off"):
+        cur = loop_state()
+        want = cmd
+        if cur == want:
+            print(f"loop already {want.upper()}")
+            return 0
+        out = sh(["docmirror-brainhook"])  # toggles
+        print(out or f"loop → {want.upper()}")
+        # verify it landed where intended
+        if loop_state() != want:
+            sh(["docmirror-brainhook"])  # toggle back if it went the wrong way
+        print(f"loop: {loop_state().upper()}")
+        return 0
+    print(f"unknown: {cmd}\n{__doc__}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

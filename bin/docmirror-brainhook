@@ -1,0 +1,9 @@
+#!/bin/bash
+# docmirror-brainhook toggle — controls the doc-mirror work-loop Stop hook
+s=/tmp/docmirror_brainhook_state.txt
+c=/tmp/docmirror_brainhook_turn.txt
+if [[ "$(cat "$s" 2>/dev/null)" == "on" ]]; then
+  echo off > "$s"; echo "🧠 doc-mirror brainhook OFF"
+else
+  echo on > "$s"; rm -f "$c"; echo "🧠 doc-mirror brainhook ON (turn counter reset)"
+fi

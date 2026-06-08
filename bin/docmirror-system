@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+import json,sys
+from pathlib import Path
+repo=Path(sys.argv[1]); name=repo.name
+L=json.loads((repo/"docs/mirror/_LAYERS.json").read_text())
+runtime=[str(i) for i in range(1,99) if str(i) in L]
+top=runtime[-1] if runtime else None
+def role(k):
+    if k=="0": return "FOUNDATION — data (.pl/.owl), consulted/loaded by the runtime"
+    if k=="T": return "TESTS — cross-cutting, exercise the stack (not a stack layer)"
+    if k==top: return "OUTER — facades / entrypoints (api, mcp, cli, main)"
+    if k=="1": return "BASE — leaf modules (no intra-repo imports)"
+    return "MIDDLE — logic / aggregation"
+# render top->bottom: T (aside), then outer..base, then foundation
+disp=([ "T" ] if "T" in L else []) + list(reversed(runtime)) + ([ "0" ] if "0" in L else [])
+out=[f"# {name} — Architecture Stack (EMERGENT)","",
+     "Generated from intra-package import depth — `docmirror-layers <repo>` writes docs/mirror/_LAYERS.json;",
+     "this diagram is rendered from it. NOT hand-authored, NOT arbitrary. Dependencies point DOWN.","",
+     "===ONLY EDIT IF SYSTEM CHANGES (regenerate; do not hand-edit)===","",
+     "## LAYER — what the repo IS (stack)",""]
+for k in disp:
+    out.append(f"┌─ L{k} · {role(k)}")
+    for m in L[k]:
+        out.append(f"│    {m}")
+out.append("└" + "─"*60)
+out+=["","Each module ⟶ doc(m) `docs/mirror/<relpath>.md` (IMPL) + vision(m) `docs/vision/<relpath>.md`.",
+      "Read the stack top-down to understand the repo; descend into any layer's doc(m) for detail.",
+      "===ONLY EDIT IF SYSTEM CHANGES==="]
+(repo/"docs/SYSTEM.md").write_text("\n".join(out)+"\n")
+print(f"{name}: {len(disp)} layers rendered")

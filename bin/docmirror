@@ -1,0 +1,437 @@
+#!/usr/bin/env python3
+"""docmirror — the unified doc-mirror / HUD CLI.
+
+stdlib only. A single umbrella entrypoint with a MODULE dispatch table.
+
+Currently implemented module:
+  search  — FTS5 search over the prompt-skill store AND the doc-mirror graph.
+            (An LLM can't do FTS5; everything else — scaffold/dispatch/record-trial/
+             score/goldenize — is LLM-native and lives in each prompt's own SKILL.md.)
+
+SEAM for later modules (do NOT re-home these now; just register here when folded in):
+  journal | commit | layers | system  →  add to MODULES below + a cmd_<name>().
+The search code is LIFTED verbatim from the verified promptctl FTS5 search.
+
+PATHS ARE DERIVED, NEVER HARDCODED (de-hardcoded 2026-06-02 for the L1 plugin):
+  - PROMPTS_DIR (the prompt-skill store, which ships INSIDE the plugin):
+      env DOCMIRROR_PROMPTS_DIR  →  env CLAUDE_PLUGIN_ROOT/skills/...  →
+      ~/.docmirror_plugin_root (written by the install wizard)/skills/...  →
+      <monorepo>/doc-mirror-system/plugin/skills/... (dev fallback).
+  - the doc-mirror GRAPH corpora (docs/mirror, docs/vision, context, journal):
+      derived by scanning the monorepo root (env DOCMIRROR_MONOREPO / ~/.docmirror_root /
+      git toplevel / cwd) for every repo's docs+context — so ANY mirrored repo is indexed,
+      no repo names baked in.
+"""
+import sys
+import os
+import re
+import sqlite3
+from pathlib import Path
+
+_PROMPTS_REL = os.path.join("skills", "doc-mirror-prompts", "resources", "prompts")
+
+
+# ---- root / path resolution (NO hardcoded container paths) -----------------
+def _monorepo():
+    """The monorepo root — SAME resolution as journal/vision/cursor/etc.:
+    env DOCMIRROR_MONOREPO, else machine-local ~/.docmirror_root, else git toplevel, else cwd."""
+    e = os.environ.get("DOCMIRROR_MONOREPO")
+    if e:
+        return Path(e)
+    cfg = Path.home() / ".docmirror_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            return Path(cfg.read_text().strip())
+    except Exception:
+        pass
+    try:
+        import subprocess
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if top:
+            return Path(top)
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+def _prompts_dir():
+    """Locate the prompt-skill store (it ships INSIDE the plugin). The search bin runs as a host
+    CLI on PATH, so CLAUDE_PLUGIN_ROOT is usually NOT in its env at call time — the install wizard
+    records the plugin root in ~/.docmirror_plugin_root, which is the portable resolution.
+    Returns an existing dir or None (caller errors with guidance)."""
+    # 1. explicit override
+    e = os.environ.get("DOCMIRROR_PROMPTS_DIR")
+    if e and os.path.isdir(e):
+        return e
+    # 2. plugin context (hooks get CLAUDE_PLUGIN_ROOT; a CLI run from a hook would too)
+    pr = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if pr:
+        cand = os.path.join(pr, _PROMPTS_REL)
+        if os.path.isdir(cand):
+            return cand
+    # 3. machine config written by the install wizard (the normal installed case)
+    cfg = Path.home() / ".docmirror_plugin_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            cand = os.path.join(cfg.read_text().strip(), _PROMPTS_REL)
+            if os.path.isdir(cand):
+                return cand
+    except Exception:
+        pass
+    # 4. dev fallback: the plugin source lives in the monorepo
+    cand = os.path.join(str(_monorepo()), "doc-mirror-system", "plugin", _PROMPTS_REL)
+    if os.path.isdir(cand):
+        return cand
+    return None
+
+
+_PRUNE = {".git", "__pycache__", "node_modules", ".venv", "venv", "build", "dist"}
+
+
+def _doc_corpora(root):
+    """Derive the doc-mirror graph corpora by scanning the monorepo for every repo's
+    docs/mirror, docs/vision, context, and context/journal — no repo names hardcoded.
+    Returns (doc_roots, journal_dirs)."""
+    doc_roots, journal_dirs = [], []
+    root = str(root)
+    if not os.path.isdir(root):
+        return doc_roots, journal_dirs
+    for dp, dn, fn in os.walk(root):
+        dn[:] = [d for d in dn if d not in _PRUNE]
+        norm = dp.replace(os.sep, "/")
+        if norm.endswith("/docs/mirror") or norm.endswith("/docs/vision"):
+            doc_roots.append(dp)
+        elif norm.endswith("/context/journal"):
+            journal_dirs.append(dp)
+        elif norm.endswith("/context"):
+            doc_roots.append(dp)
+    return doc_roots, journal_dirs
+
+
+PROMPTS_DIR = _prompts_dir()
+
+# FTS5 index db (rebuilt on each run — stdlib sqlite3 only).
+INDEX_DIR = os.path.expanduser("~/.local/share/docmirror")
+INDEX_DB = os.path.join(INDEX_DIR, "search.db")
+
+
+# ---- frontmatter parser (lifted from promptctl; hand-rolled, no yaml dep) ---
+def parse_skill_md(text):
+    """Return (meta dict, body str). meta has scalars + 'log' (list of str)."""
+    meta = {"log": []}
+    body = text
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return meta, body
+    end = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            end = i
+            break
+    if end is None:
+        return meta, body
+    fm = lines[1:end]
+    body = "\n".join(lines[end + 1:])
+    i = 0
+    while i < len(fm):
+        raw = fm[i]
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            i += 1
+            continue
+        m = re.match(r"^([A-Za-z_][\w]*)\s*:\s*(.*)$", raw)
+        if not m:
+            i += 1
+            continue
+        key = m.group(1)
+        val = m.group(2)
+        if key == "log":
+            if val.strip() in ("[]", ""):
+                if val.strip() == "[]":
+                    meta["log"] = []
+                    i += 1
+                    continue
+                meta["log"] = []
+                j = i + 1
+                while j < len(fm):
+                    s = fm[j]
+                    st = s.strip()
+                    if st.startswith("- "):
+                        meta["log"].append(_unquote(st[2:].strip()))
+                        j += 1
+                    elif st == "":
+                        j += 1
+                    elif re.match(r"^[A-Za-z_][\w]*\s*:", s):
+                        break
+                    else:
+                        if meta["log"]:
+                            meta["log"][-1] += " " + st
+                        j += 1
+                i = j
+                continue
+            else:
+                meta["log"] = [val.strip()]
+                i += 1
+                continue
+        COMPACT_KEYS = ("domain", "subdomain", "golden", "score", "runs",
+                        "verified_good", "check_level", "last_verified")
+        if key in COMPACT_KEYS and val:
+            pair_re = re.compile(r"\s+(domain|subdomain|golden|score|runs|verified_good|check_level|last_verified)\s*:\s*")
+            cur_key = key
+            rest = val
+            while True:
+                mm = pair_re.search(rest)
+                if not mm:
+                    meta[cur_key] = _unquote(rest.strip())
+                    break
+                meta[cur_key] = _unquote(rest[:mm.start()].strip())
+                cur_key = mm.group(1)
+                rest = rest[mm.end():]
+        else:
+            meta[key] = _unquote(val.strip())
+        i += 1
+    return meta, body
+
+
+def _unquote(s):
+    s = s.strip()
+    if len(s) >= 2 and ((s[0] == '"' and s[-1] == '"') or (s[0] == "'" and s[-1] == "'")):
+        return s[1:-1]
+    return s
+
+
+def _to_int(v, default=0):
+    try:
+        return int(str(v).strip())
+    except Exception:
+        return default
+
+
+def _to_float(v, default=0.0):
+    try:
+        return float(str(v).strip())
+    except Exception:
+        return default
+
+
+def _is_golden(v):
+    return str(v).strip().lower() in ("true", "1", "yes")
+
+
+# ---- discovery -------------------------------------------------------------
+def iter_prompt_skills():
+    """Yield (pkg_dir, relpath, meta, body) for every prompt-skill SKILL.md."""
+    if not PROMPTS_DIR or not os.path.isdir(PROMPTS_DIR):
+        return
+    for dirpath, dirnames, filenames in os.walk(PROMPTS_DIR):
+        if "SKILL.md" in filenames:
+            p = os.path.join(dirpath, "SKILL.md")
+            try:
+                with open(p, encoding="utf-8") as f:
+                    text = f.read()
+            except Exception:
+                continue
+            meta, body = parse_skill_md(text)
+            rel = os.path.relpath(dirpath, PROMPTS_DIR)
+            yield dirpath, rel, meta, body
+
+
+# ---- index build (lifted from promptctl) -----------------------------------
+def _read(p):
+    try:
+        with open(p, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+
+def build_index():
+    os.makedirs(INDEX_DIR, exist_ok=True)
+    if os.path.exists(INDEX_DB):
+        os.remove(INDEX_DB)
+    conn = sqlite3.connect(INDEX_DB)
+    cur = conn.cursor()
+    cur.execute("""CREATE VIRTUAL TABLE prompts USING fts5(
+        path, domain, subdomain, procedure, description, body,
+        golden UNINDEXED, score UNINDEXED, runs UNINDEXED)""")
+    cur.execute("CREATE VIRTUAL TABLE docs USING fts5(path, body)")
+
+    for pkg, rel, meta, body in iter_prompt_skills():
+        cur.execute(
+            "INSERT INTO prompts (path, domain, subdomain, procedure, description, body, golden, score, runs) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (rel, meta.get("domain", ""), meta.get("subdomain", ""),
+             meta.get("name", os.path.basename(rel)), meta.get("description", ""),
+             body, 1 if _is_golden(meta.get("golden", "false")) else 0,
+             _to_float(meta.get("score", 0.0)), _to_int(meta.get("runs", 0))))
+
+    doc_roots, journal_dirs = _doc_corpora(_monorepo())
+    for root in doc_roots:
+        if not os.path.isdir(root):
+            continue
+        for dp, dn, fn in os.walk(root):
+            dn[:] = [d for d in dn if d not in _PRUNE]
+            for name in fn:
+                if name.endswith(".md"):
+                    fp = os.path.join(dp, name)
+                    cur.execute("INSERT INTO docs (path, body) VALUES (?,?)", (fp, _read(fp)))
+    for jdir in journal_dirs:
+        if not os.path.isdir(jdir):
+            continue
+        for name in os.listdir(jdir):
+            if name.endswith(".md"):
+                fp = os.path.join(jdir, name)
+                cur.execute("INSERT INTO docs (path, body) VALUES (?,?)", (fp, _read(fp)))
+
+    conn.commit()
+    return conn
+
+
+def _fts_query(q):
+    """Forgiving FTS5 MATCH expr: OR the bare terms so partial matches surface."""
+    terms = re.findall(r"[A-Za-z0-9_]+", q)
+    if not terms:
+        return None
+    return " OR ".join('"%s"' % t for t in terms)
+
+
+def _what_of(desc):
+    """Extract the WHAT clause from a WHAT/WHEN description, trimmed."""
+    if not desc:
+        return ""
+    m = re.search(r"WHAT:\s*(.*?)(?:\s*WHEN:|$)", desc, re.DOTALL)
+    chunk = (m.group(1) if m else desc).strip()
+    chunk = re.sub(r"\s+", " ", chunk)
+    if len(chunk) > 90:
+        chunk = chunk[:87] + "..."
+    return chunk
+
+
+# ---- module: search --------------------------------------------------------
+SEARCH_USAGE = """docmirror search — FTS5 search over prompts + the doc-mirror graph
+
+usage:
+  docmirror search "<query>" [--corpus prompts|docs|all] [--limit N]
+
+  --corpus prompts  prompt-skill store; re-ranked golden DESC, score DESC, bm25 ASC;
+                    flagged [GOLDEN <score>] / [EXPERIMENTAL <score> runs:n]
+  --corpus docs     the doc-mirror graph (docs/mirror, docs/vision, context, journal);
+                    bm25-ranked, flagged [DOC] <path>
+  --corpus all      both (default)
+  --limit N         max hits per corpus (default 20)
+"""
+
+
+def cmd_search(args):
+    if args and args[0] in ("-h", "--help"):
+        sys.stdout.write(SEARCH_USAGE)
+        return 0
+    corpus = "all"
+    limit = 20
+    query_parts = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--corpus" and i + 1 < len(args):
+            corpus = args[i + 1]
+            i += 2
+        elif a == "--limit" and i + 1 < len(args):
+            limit = _to_int(args[i + 1], 20)
+            i += 2
+        else:
+            query_parts.append(a)
+            i += 1
+    query = " ".join(query_parts).strip()
+    if not query:
+        sys.stderr.write("search: empty query\n")
+        return 2
+    if corpus not in ("prompts", "docs", "all"):
+        sys.stderr.write("search: --corpus must be prompts|docs|all\n")
+        return 2
+    if corpus in ("prompts", "all") and not PROMPTS_DIR:
+        sys.stderr.write(
+            "search: cannot locate the prompt-skill store. Run the doc-mirror-install wizard "
+            "(it records the plugin root in ~/.docmirror_plugin_root), or set DOCMIRROR_PROMPTS_DIR.\n")
+        if corpus == "prompts":
+            return 2
+    match = _fts_query(query)
+    if not match:
+        sys.stderr.write("search: query has no searchable terms\n")
+        return 2
+    conn = build_index()
+    cur = conn.cursor()
+    any_hit = False
+
+    if corpus in ("prompts", "all"):
+        try:
+            rows = cur.execute(
+                "SELECT path, description, golden, score, runs, bm25(prompts) AS rank "
+                "FROM prompts WHERE prompts MATCH ? "
+                "ORDER BY golden DESC, score DESC, rank ASC LIMIT ?",
+                (match, limit)).fetchall()
+        except sqlite3.OperationalError as e:
+            sys.stderr.write("search(prompts) FTS error: %s\n" % e)
+            rows = []
+        for path, desc, golden, score, runs, rank in rows:
+            any_hit = True
+            what = _what_of(desc)
+            abspath = os.path.join(PROMPTS_DIR, path) if PROMPTS_DIR else path
+            if golden:
+                flag = "[GOLDEN %.2f]" % (score or 0.0)
+            else:
+                flag = "[EXPERIMENTAL %.2f runs:%d]" % (score or 0.0, _to_int(runs))
+            print("%s %s — %s  (%s)" % (flag, path, what, abspath))
+
+    if corpus in ("docs", "all"):
+        try:
+            rows = cur.execute(
+                "SELECT path, bm25(docs) AS rank FROM docs WHERE docs MATCH ? "
+                "ORDER BY rank ASC LIMIT ?", (match, limit)).fetchall()
+        except sqlite3.OperationalError as e:
+            sys.stderr.write("search(docs) FTS error: %s\n" % e)
+            rows = []
+        for path, rank in rows:
+            any_hit = True
+            print("[DOC] %s" % path)
+
+    conn.close()
+    if not any_hit:
+        print("(no matches for %r in corpus=%s)" % (query, corpus))
+    return 0
+
+
+# ---- umbrella dispatch -----------------------------------------------------
+# MODULE registry. Fold journal/commit/layers/system in here later (the seam).
+MODULES = {
+    "search": cmd_search,
+}
+
+USAGE = """docmirror — the unified doc-mirror / HUD CLI
+
+usage:
+  docmirror <module> [args...]
+
+modules:
+  search   FTS5 search over the prompt-skill store + the doc-mirror graph
+           docmirror search "<query>" [--corpus prompts|docs|all] [--limit N]
+
+(seam: journal | commit | layers | system to be folded in later — all other
+ doc-mirror operations are LLM-native; only SEARCH needs to be a command.)
+"""
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        sys.stdout.write(USAGE)
+        return 0 if (argv and argv[0] in ("-h", "--help", "help")) else 0
+    mod, rest = argv[0], argv[1:]
+    fn = MODULES.get(mod)
+    if not fn:
+        sys.stderr.write("unknown module: %s\n\n%s" % (mod, USAGE))
+        return 2
+    return fn(rest)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

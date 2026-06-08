@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""
+nomicon-atomize — project a nomicon's held frameworks OUT into a flat skills/ dir.
+
+WHAT IT DOES
+------------
+A *nomicon* (an author-nomicon SKILL.md) holds an organized set of {aios}-nomicon
+frameworks in a markdown "## Frameworks" table. Each row points (canonical reference)
+at that framework's own skill dir, plugin, and chapter — but a NESTED / referenced skill
+does NOT auto-inject into Claude Code: only top-level `skills/<name>/` dirs that carry a
+description frontmatter are discovered. So an agent equipped with the organized nomicon
+can read the table, but the frameworks it points at are invisible to auto-discovery.
+
+This atomizer PROJECTS the held frameworks OUT into a FLAT `skills/` dir so agents
+working in that dir auto-discover every framework as a top-level skill:
+
+  - the organized nomicon stays the SOURCE OF TRUTH (you keep editing the table),
+  - the atomized flat dir is the INJECTABLE DEPLOYMENT (run this at install time).
+
+For each row it creates a RELATIVE SYMLINK `<target>/<skill-name>/` -> the framework's
+skill dir (the dir containing that row's SKILL.md, with its `resources/`). The ORIGINAL
+stays put — the nomicon's organized tree is the SOURCE OF TRUTH; the flat dir is only
+symlinks, so edits to the original propagate and nothing is duplicated (same pattern as
+the doc-mirror vision hyperedges: canon + relative symlinks). It also symlinks the
+author-nomicon itself (the holder/search/router) into `<target>/<author-nomicon-name>/`
+so the holder is discoverable too. Re-running overwrites cleanly (idempotent).
+
+USAGE
+-----
+  nomicon-atomize <nomicon_path> <target_skills_dir>
+
+  <nomicon_path>       a nomicon SKILL.md, or the dir that contains it.
+  <target_skills_dir>  the flat skills/ dir to project into (created if missing).
+
+  nomicon-atomize --help
+
+The script is generic: it parses the "## Frameworks" table of ANY nomicon. The only
+assumptions are the table's column shape (Framework | What it's for | Framework skill |
+Plugin | Chapter) and that the "Framework skill" cell carries a skill NAME plus an
+absolute path to that framework's SKILL.md (in parentheses, or as a markdown link).
+"""
+
+import argparse
+import os
+import re
+import shutil
+import sys
+
+
+def _read_skill_md(nomicon_path):
+    """Resolve nomicon_path (a SKILL.md or its dir) to (skill_md_path, text)."""
+    if os.path.isdir(nomicon_path):
+        skill_md = os.path.join(nomicon_path, "SKILL.md")
+    else:
+        skill_md = nomicon_path
+    if not os.path.isfile(skill_md):
+        sys.exit(f"error: nomicon SKILL.md not found at: {skill_md}")
+    with open(skill_md, "r", encoding="utf-8") as fh:
+        return skill_md, fh.read()
+
+
+def _parse_frontmatter_name(text):
+    """Extract `name:` from a leading YAML frontmatter block, else None."""
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    block = m.group(1) if m else text
+    for line in block.splitlines():
+        nm = re.match(r"\s*name\s*:\s*(.+?)\s*$", line)
+        if nm:
+            return nm.group(1).strip().strip('"').strip("'")
+    return None
+
+
+def _find_frameworks_table(text):
+    """Return the list of raw table rows under the '## Frameworks' heading.
+
+    Captures every line that looks like a markdown table row (starts with '|')
+    after the heading, stopping at the next heading or a non-table line.
+    """
+    lines = text.splitlines()
+    rows = []
+    in_section = False
+    seen_table = False
+    for line in lines:
+        if re.match(r"^\s*#{1,6}\s+", line):
+            # a heading
+            if re.match(r"^\s*#{1,6}\s+Frameworks\b", line, re.IGNORECASE):
+                in_section = True
+                continue
+            if in_section:
+                break  # next heading ends the Frameworks section
+            continue
+        if not in_section:
+            continue
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            rows.append(stripped)
+            seen_table = True
+        elif seen_table and stripped == "":
+            # blank line after the table — table is over
+            break
+        # else: prose between heading and table — ignore
+    return rows
+
+
+def _split_row(row):
+    """Split a markdown table row into trimmed cell strings."""
+    # drop the leading/trailing pipe, then split on unescaped pipes
+    inner = row.strip()
+    if inner.startswith("|"):
+        inner = inner[1:]
+    if inner.endswith("|"):
+        inner = inner[:-1]
+    return [c.strip() for c in inner.split("|")]
+
+
+def _is_separator_row(cells):
+    """A markdown header-separator row: every cell is dashes/colons."""
+    return all(re.fullmatch(r":?-{1,}:?", c) is not None for c in cells if c != "")
+
+
+def _parse_framework_skill_cell(cell):
+    """From a 'Framework skill' cell, extract (skill_name, skill_md_path).
+
+    Handles:
+      - bare form:        name (/abs/path/SKILL.md)
+      - markdown link:    [name](/abs/path/SKILL.md)
+      - name + md link:   name ([label](/abs/path/SKILL.md))
+    Returns (name, path) or (name, None) / (None, None) if unresolved.
+    """
+    cell = cell.strip()
+    if not cell:
+        return None, None
+
+    # markdown link form: [name](path)
+    md = re.match(r"^\[([^\]]+)\]\(([^)]+)\)\s*$", cell)
+    if md:
+        return md.group(1).strip(), md.group(2).strip()
+
+    # general form: <name> (<path-or-link>)
+    paren = re.match(r"^(.*?)\s*\((.*)\)\s*$", cell, re.DOTALL)
+    if paren:
+        name = paren.group(1).strip()
+        inner = paren.group(2).strip()
+        # inner might itself be a markdown link [label](path)
+        inner_md = re.match(r"^\[[^\]]+\]\(([^)]+)\)\s*$", inner)
+        if inner_md:
+            return (name or None), inner_md.group(1).strip()
+        return (name or None), inner
+    # no parenthesized path — treat whole cell as a name we cannot resolve
+    return cell, None
+
+
+def _symlink_dir(src_dir, dest_path):
+    """Idempotently create a RELATIVE symlink dest_path -> src_dir.
+
+    The original (src_dir) stays the source of truth; dest_path is only a symlink, so
+    edits to the original propagate and nothing is duplicated. Relative target so the
+    pair is portable if moved together (same as the doc-mirror vision-hyperedge pattern).
+    """
+    src_abs = os.path.abspath(src_dir)
+    if os.path.abspath(dest_path) == src_abs:
+        return  # dest IS the source — never rmtree the source onto itself (self-clobber guard)
+    # clear any existing dest (a prior symlink, dir, or file) for idempotency
+    if os.path.islink(dest_path) or os.path.isfile(dest_path):
+        os.remove(dest_path)
+    elif os.path.isdir(dest_path):
+        shutil.rmtree(dest_path)
+    rel = os.path.relpath(src_abs, os.path.dirname(os.path.abspath(dest_path)))
+    os.symlink(rel, dest_path)
+
+
+def atomize(nomicon_path, target_skills_dir):
+    skill_md, text = _read_skill_md(nomicon_path)
+    nomicon_dir = os.path.dirname(os.path.abspath(skill_md))
+    target_skills_dir = os.path.abspath(target_skills_dir)
+    os.makedirs(target_skills_dir, exist_ok=True)
+
+    rows = _find_frameworks_table(text)
+    if not rows:
+        sys.exit("error: no '## Frameworks' table found in the nomicon SKILL.md")
+
+    # Locate the 'Framework skill' column index from the header row.
+    header_cells = None
+    fw_col = None
+    data_rows = []
+    for row in rows:
+        cells = _split_row(row)
+        if _is_separator_row(cells):
+            continue
+        if header_cells is None:
+            header_cells = cells
+            for i, c in enumerate(cells):
+                if c.strip().lower() == "framework skill":
+                    fw_col = i
+            continue
+        data_rows.append(cells)
+
+    if fw_col is None:
+        # fall back: default position (Framework | What | Framework skill | ...) = index 2
+        fw_col = 2
+
+    projected = []
+    failures = []
+
+    for cells in data_rows:
+        fw_label = cells[0] if cells else "?"
+        if fw_col >= len(cells):
+            failures.append((fw_label, "row has too few columns to read 'Framework skill' cell"))
+            continue
+        name, path = _parse_framework_skill_cell(cells[fw_col])
+        if not path:
+            failures.append((fw_label, f"could not extract a path from cell: {cells[fw_col]!r}"))
+            continue
+        if not os.path.isabs(path):
+            path = os.path.normpath(os.path.join(nomicon_dir, path))
+        if not os.path.isfile(path):
+            failures.append((fw_label, f"SKILL.md path does not exist: {path}"))
+            continue
+        skill_src_dir = os.path.dirname(path)
+        # derive output dir name: prefer the table-cell skill NAME, else frontmatter name, else basename
+        out_name = name
+        if not out_name:
+            with open(path, "r", encoding="utf-8") as fh:
+                out_name = _parse_frontmatter_name(fh.read())
+        if not out_name:
+            out_name = os.path.basename(skill_src_dir)
+        dest = os.path.join(target_skills_dir, out_name)
+        _symlink_dir(skill_src_dir, dest)
+        projected.append((out_name, skill_src_dir, dest))
+
+    # Also project the author-nomicon itself (the holder/search/router) — via symlink.
+    author_name = _parse_frontmatter_name(text) or os.path.basename(nomicon_dir)
+    author_dest = os.path.join(target_skills_dir, author_name)
+    # guard 1: target is inside the nomicon dir (symlink loop — existing check)
+    if os.path.abspath(target_skills_dir).startswith(os.path.abspath(nomicon_dir) + os.sep):
+        print(f"note: target is inside the nomicon dir; skipping self-symlink of {author_name}")
+        author_dest = None
+    # guard 2: author_dest resolves to the same path as nomicon_dir (target CONTAINS the holder
+    # — atomizing into the holder's own parent dir makes author_dest == nomicon_dir, which would
+    # cause _symlink_dir to rmtree the holder before symlinking; the self-clobber guard in
+    # _symlink_dir also catches this, but skip explicitly here for a clear diagnostic message)
+    elif os.path.abspath(author_dest) == os.path.abspath(nomicon_dir):
+        print(f"note: author_dest resolves to the nomicon dir itself; skipping self-symlink of {author_name}")
+        author_dest = None
+    else:
+        _symlink_dir(nomicon_dir, author_dest)
+
+    # Summary
+    print(f"nomicon-atomize: symlinked from {skill_md}")
+    print(f"                 into {target_skills_dir}  (relative symlinks; originals stay)\n")
+    if author_dest:
+        print(f"author-nomicon (holder/search/router):")
+        print(f"  - {author_name}  ->  (symlink)  {nomicon_dir}\n")
+    if projected:
+        print(f"frameworks projected ({len(projected)}):")
+        for out_name, src, dest in projected:
+            print(f"  - {out_name}")
+            print(f"        from {src}")
+            print(f"        ->   {dest}")
+    else:
+        print("frameworks projected: none")
+    if failures:
+        print(f"\nUNRESOLVED rows ({len(failures)}):")
+        for label, why in failures:
+            print(f"  - {label}: {why}")
+        return 1
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="nomicon-atomize",
+        description=(
+            "Project a nomicon's held frameworks OUT into a flat skills/ dir so agents "
+            "auto-discover them as top-level skills. The organized nomicon stays the "
+            "source of truth; the atomized flat dir is the injectable deployment."
+        ),
+        epilog="Re-running overwrites cleanly (idempotent).",
+    )
+    parser.add_argument(
+        "nomicon_path",
+        help="a nomicon SKILL.md, or the dir that contains it",
+    )
+    parser.add_argument(
+        "target_skills_dir",
+        help="the flat skills/ dir to project into (created if missing)",
+    )
+    args = parser.parse_args(argv)
+    return atomize(args.nomicon_path, args.target_skills_dir)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

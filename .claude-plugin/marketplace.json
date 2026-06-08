@@ -1,0 +1,32 @@
+{
+  "name": "doc-mirror-marketplace",
+  "owner": {
+    "name": "Isaac Rubin",
+    "email": "isaac@sanctuary.systems"
+  },
+  "metadata": {
+    "description": "doc-mirror — the documentation-and-development operating-system plugin (a 1:1 doc mirror of any codebase, maintained by an invariant state machine).",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "doc-mirror",
+      "source": "./",
+      "description": "The doc-mirror claude system: a 1:1 documentation mirror of any codebase, maintained by an invariant doc-mirror STATE MACHINE (per-module doc(m), 6 context/ index files, fork-on-change, no random documents). Installs the doc-mirror state-skills, the brainhook/session-start/transition/readonly hooks, the journal/vision/cursor/commit/tracker/search CLIs, and the doc-mirror law + behavior rules.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Isaac Rubin"
+      },
+      "license": "GPBL-1.0",
+      "keywords": [
+        "documentation",
+        "doc-mirror",
+        "ai-operating-system",
+        "claude-system",
+        "state-machine",
+        "codebase-understanding"
+      ],
+      "category": "productivity"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+─────────────────────────────────────────────────────────────────────────────
+📓 JOURNAL (every turn) — record what you THOUGHT, the moment you think it:
+`journal -t <TYPE> --domain <D> --subdomain <SD> --tags <module-or-topic,...> [--repo <name|path>] "<msg>"`
+(real timestamp; writes the global thinklog + the repo's thinklog; PROJECTS vision-types into the
+vision layer; dual-writes a CartON node {Repo}_{Domain}_{Subdomain}_{ts}). NOT git log; NOT the
+doc(m)/vision files — it PROJECTS into them.
+--domain + --subdomain are REQUIRED on every queryable entry (the concept axis for triangulation;
+Title_Cased; cannot == repo, cannot == each other). Only -g global notes are exempt.
+
+ROUTING (never cwd): --repo (a registered name OR a monorepo path) → else the cursor's active_repo
+→ else -g (global-only). A module-tag (has a doc(m)) lands in its paired vision(m); a topic-tag (no
+doc(m) yet) auto-creates <repo>/docs/vision/_<topic>.md. Each append gets a stable [vN] id.
+
+TYPES — EVERY type projects to vision EXCEPT COMMIT (the impl-changer; handled by doc-mirror-commit):
+  INTENT     start of a chunk: what + why
+  DECISION   a choice: state it + WHY + alternatives rejected
+  OPEN       a fork you CANNOT resolve → journal it, then docmirror-sleep (echoes to Isaac); never auto-decide
+  FINDING    a discovered fact / a CORRECTION of a prior wrong claim
+  HYPOTHESIS a guess you're testing (journal again when confirmed/rejected)
+  VISION     a plain idea about code not built
+It RAISES if a vision-type can't be homed (no module-tag AND no repo) — add --tags/--repo, or -g for
+a pure cross-cutting thinklog note.
+
+SEE THE BACKLOG (the view): `vision stats` (gaps by project) · `vision project <p>` · `vision diff <m>`.
+RESOLVE a tag: `vision <tag>` / `vision --tags`.
+
+Trigger = set intent · decide · hit an unresolvable fork · discover/correct a fact · reject a
+hypothesis · finish a step. Thought-but-not-journaled = evaporated. Did you journal this turn?
+─────────────────────────────────────────────────────────────────────────────
