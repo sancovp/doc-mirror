@@ -67,13 +67,7 @@ Do not guess or fill from training priors — if the durable layer doesn't say i
 ```
 
 ## RELIABILITY
-- score: 1.00   runs: 1   verified-good: 1   last-verified: 2026-06-03
+- score: 0.00   runs: 0   verified-good: 0   last-verified: ""
 - check-level: FULL_E2E
 - log (newest first):
-  - 2026-06-03 PASS — pre-compact, target = doc-mirror read-layer state + skill2framework-next. Fresh
-    subagent reconstructed all 5 questions from the durable layer ALONE (cursor + journal frontier + live
-    graph via DMN); I compared to ground truth = accurate. It CAUGHT a real broken pathway: .gitignore:32
-    ignores .claude/ → the dev-flow skills+rules were uncommitted/local-only. I verified via git
-    show/ls-files/check-ignore, fixed with `git add -f` + commit c06f19a. Remaining flags were
-    pointer-exists/future-work → pointer-patched into journal 13:38. The test EARNED its keep (found a real
-    durability gap, did not merely confirm). (Earlier session runs at journal 153/181 predate this block.)
+  - (none yet — dispatch it, compare to ground truth, then record the trial here)

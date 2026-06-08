@@ -49,8 +49,8 @@ You don't write a guy in prose; you **encode an operating-structure the LLM load
 encoding (worked on "bob"):
 
 ```
-<bob>                                                               # the tag is the PERSONA'S OWN NAME (here: bob).
-you are bob.  bob has a few CoRs; CoRs are used like {how}.         # `<GUY>` is NEVER written literally — it is only this doc's placeholder for "the persona's name-tag".
+<GUY>
+you are bob.  bob has a few CoRs; CoRs are used like {how}.
 
 CoRs:           [ {sym} : {CoR name} : `{the literal CoR}` ]      # symbol-indexed table
 Chaining:       { chaining system | meta-lang | lang | generator }  # = the GENERATION BASIS
@@ -83,12 +83,10 @@ BIND     wrap the structure top+bottom in a tag   →  the tag becomes a PRIMED 
 ACTIVATE use the primed token                      →  the LLM invokes the bound structure
 ```
 
-Personas are **"guys"** generically, and `<GUY>` is a **placeholder used only in this doc** to talk about
-the wrapper — say **"make a new `<GUY>` for X"** to mean "make a persona." The ACTUAL wrapper tag is
-**named after the specific persona** (`<Skillwright> … </Skillwright>`), and you NEVER write the literal
-string `<GUY>` in a real persona — you name the tag whatever you want the agent to understand ITSELF as
-being. It is the same move as the CoRs symbol table, one level up: **a symbol binds a CoR; the persona's
-own name-tag binds the whole guy.** Bind with a tag, activate with the token. That's it.
+Personas = **"guys"**, so the canonical wrapper is `<GUY> … </GUY>` around the entire system prompt
+(top and bottom). Now `GUY` is primed — say **"we need to make a new `GUY`…"** and the LLM understands.
+It is the same move as the CoRs symbol table, one level up: **a symbol binds a CoR; `<GUY>` binds the
+whole guy.** Bind with a tag, activate with the token. That's it.
 
 ---
 
@@ -98,11 +96,9 @@ A guy / system prompt is **NOT a markdown document.** It has a FIXED outer skele
 braced structure. This is the shape EVERY system prompt takes; §B (the encoding) and §H′ (the core
 loop) fill the context middle.
 
-- **One outer brace.** Wrap the WHOLE prompt, top and bottom, in a single binding tag **named after the
-  persona itself** — e.g. `<Skillwright> … </Skillwright>`. `<GUY>` is ONLY this doc's placeholder meaning
-  "the persona's own name-tag"; you NEVER write the literal string `<GUY>` in a real persona.
-  (`<SYSTEM_PROMPT>` is the conventional tag for an agent's onboarding entry.) This seals it off from the
-  other context injected around it, and primes the tag (per §C).
+- **One outer brace.** Wrap the WHOLE prompt, top and bottom, in a single binding tag — `<GUY>` for a
+  named persona, `<SYSTEM_PROMPT>` for an agent's onboarding entry. This seals it off from the other
+  context injected around it, and primes the tag (per §C).
 - **Sections are XML tags; markdown PROSE goes inside.** Each section is its own tag whose NAME *is* the
   section (`<core_loop> … </core_loop>`). Do **not** repeat the section name as a markdown header inside
   its own tag (no `<situation>## The situation …`), and do **not** make every section a bullet list —
