@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""
+docmirror-cursor — the HARD layer of the doc-mirror operating state graph (STATE_GRAPH.md).
+
+A tiny persisted phase-state (mirrors core/evolution_system EvolutionFlowState): it is the agent's
+"you are here" pin on the soft script. The soft script (STATE_GRAPH.md) is the map; this cursor says
+which LEG of it to act on / inject next. Resumable across compacts — read it on session start and
+re-enter exactly that phase, exactly like evolution_system resumes a saved states/<uuid>.json.
+
+This is a runtime state file, CLI-only in spirit (never hand-edit <root>/.docmirror/cursor.json — go
+through this CLI, like the journal).
+
+Commands:
+  docmirror-cursor [show]            print the current cursor (human-readable) — default
+  docmirror-cursor json              print the raw cursor JSON
+  docmirror-cursor leg               print the injectable instruction LEG for the current phase
+  docmirror-cursor set --phase P [--repo R] [--module M] [--pathway PW] [--gate G] [--open "text"]
+                                     update fields (only the ones given) + stamp updated=now
+  docmirror-cursor advance <gate>    set last_gate (the checklist cursor within a pathway)
+  docmirror-cursor clear             reset to empty (phase=orient, all context null)
+
+Phases: orient | select | change | init | prompt | think | seework | harvest | idle | open
+"""
+import argparse
+import json
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+
+
+def _monorepo() -> Path:
+    """The repo root THIS cursor belongs to — SAME resolution as journal/vision/projects (no hardcoded
+    container path): env DOCMIRROR_MONOREPO, else machine-local ~/.docmirror_root, else git toplevel,
+    else cwd. Making the cursor root-relative is what lets MANY 'systems' each have their OWN cursor:
+    a *Gym agent running in its own dir gets its own cursor for free, no machine-wide collision."""
+    e = os.environ.get("DOCMIRROR_MONOREPO")
+    if e:
+        return Path(e)
+    cfg = Path.home() / ".docmirror_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            return Path(cfg.read_text().strip())
+    except Exception:
+        pass
+    try:
+        import subprocess
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if top:
+            return Path(top)
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+# ROOT-RELATIVE (per-system), not a machine singleton. Env DOCMIRROR_CURSOR overrides explicitly.
+CURSOR_FILE = Path(os.environ.get("DOCMIRROR_CURSOR") or (_monorepo() / ".docmirror" / "cursor.json"))
+_LEGACY_CURSOR = Path("/tmp/docmirror_cursor.json")  # pre-2026-06 location; migrated on first load
+
+PHASES = ("orient", "select", "change", "init", "prompt",
+          "think", "seework", "harvest", "idle", "open")
+
+EMPTY = {
+    "phase": "orient",
+    "active_repo": None,
+    "active_module": None,
+    "pathway": None,
+    "last_gate": None,
+    "open_fork": None,
+    "updated": None,
+}
+
+# The compact per-phase LEG — the one-paragraph instruction the injection layer puts in front of the
+# agent for the CURRENT phase. Derived 1:1 from STATE_GRAPH.md; keep in sync if the script changes.
+LEGS = {
+    "orient": (
+        "ORIENT — read SYSTEM.md (the 4 diagrams) -> ROOT progress-tracker (REPO ORDER: which repo "
+        "is ACTIVE) -> that repo's 6 context files -> the doc(m) for the module in question. Fill "
+        "active_repo. Then SELECT a pathway."
+    ),
+    "select": (
+        "SELECT — branch over pathways (pick exactly ONE; never improvise a step outside a pathway): "
+        "module changed/code to write -> change; codebase not mirrored -> init; need an agent to DO a "
+        "task -> prompt; a thought/decision/finding/fork -> think; 'what needs doing?' -> seework; "
+        "reusable rule/skill noticed -> harvest; root queue empty / clean seam -> idle."
+    ),
+    "change": (
+        "@change — read the ENTIRE module + its doc(m) + every caller (no guessing). Make ONE correct "
+        "change (USING-mode on a target repo: dispatch an agent w/ a prompt-file, then VERIFY the "
+        "artifact yourself). Re-derive doc(m). doc-mirror-commit <m> '<what>' '<why>' '<ORIGIN: vision "
+        "it realizes / bug it fixes>'. Closure CHECK; the realized idea GRADUATES vision(m) -> doc(m)."
+    ),
+    "init": (
+        "@init — doc-mirror-init: GUARD (already booted? stop) -> register <C> in ROOT REPO "
+        "ORDER -> 6 context files -> enumerate manifest -> team writes doc(m)=IMPL then vision(m)=VISION "
+        "(templated prompt, never improvised) -> synthesize 6 ctx -> docmirror-layers + docmirror-system "
+        "-> closure test must print NOTHING."
+    ),
+    "prompt": (
+        "@prompt — doc-mirror-prompts: search the prompt index. If a proven prompt-skill exists, "
+        "dispatch it (one line: specifics + path). Else author CoR-first, complexify only as needed, "
+        "test once E2E, reify as a prompt-skill with a RELIABILITY block. Verify the artifact yourself "
+        "(proven skill -> sanity check; else full E2E) — the agent's report is a claim, not proof."
+    ),
+    "think": (
+        "@think — choose the TYPE (you supply it): INTENT | DECISION | FINDING | HYPOTHESIS | OPEN | "
+        "VISION | COMMIT. journal -t <TYPE> '<msg>'. The SYSTEM files+organizes+projects it; you NEVER "
+        "hand-edit. If OPEN (a fork you can't resolve): docmirror-sleep echoes it to Isaac; set phase "
+        "=open; do NOT auto-decide architecture/irreversible forks."
+    ),
+    "seework": (
+        "@seework — ROOT tracker (cross-repo order) -> active leaf tracker (ordered pointers into "
+        "vision(m)) -> vision <tag> = the DIFF (vision(m) <-> doc(m)) = exactly what is NOT-yet-built. "
+        "Pick the next unblocked item (lowest-id/earliest stage); set cursor toward its pathway "
+        "(usually change or prompt). Nothing -> idle."
+    ),
+    "harvest": (
+        "@harvest — RULE (always-aware-while-in-repo, invariant -> <repo>/.claude/rules/<slug>.md) or "
+        "SKILL (conditionally-invoked procedure -> <repo>/.claude/skills/<name>/SKILL.md with a WHAT+WHEN "
+        "description). Reference only canonical/guaranteed things or what it makes. cat it repo-local "
+        "NOW — if you don't write it, it evaporates."
+    ),
+    "idle": (
+        "@idle — context high OR clean seam (tree committed + thinking journaled) -> self_compact & -> "
+        "respond 👍 only (SessionStart reboots the cascade + re-injects the script + re-reads this "
+        "cursor). Root queue genuinely empty -> docmirror-sleep (9-min chunk toward 8h; timeout-safe; "
+        "re-run each turn). On WAKE -> re-orient (RESUME)."
+    ),
+    "open": (
+        "OPEN (blocked on Isaac) — you journaled an OPEN fork you cannot resolve "
+        "(architecture/irreversible/needs Isaac). Re-echo open_fork and docmirror-sleep; do NOT "
+        "auto-decide. Resume only when Isaac answers."
+    ),
+}
+
+
+def _load() -> dict:
+    # read the root-relative cursor; one-time fall back to the legacy /tmp singleton (migrates on save)
+    for src in (CURSOR_FILE, _LEGACY_CURSOR):
+        if src.exists():
+            try:
+                return {**EMPTY, **json.loads(src.read_text())}  # tolerate older/partial files
+            except Exception:
+                pass
+    return dict(EMPTY)
+
+
+def _save(cur: dict) -> None:
+    cur["updated"] = datetime.now().isoformat(timespec="seconds")
+    CURSOR_FILE.parent.mkdir(parents=True, exist_ok=True)  # <root>/.docmirror/ may not exist yet
+    CURSOR_FILE.write_text(json.dumps(cur, indent=2))
+
+
+def _fmt(cur: dict) -> str:
+    return (
+        f"phase        : {cur['phase']}\n"
+        f"active_repo  : {cur['active_repo']}\n"
+        f"active_module: {cur['active_module']}\n"
+        f"pathway      : {cur['pathway']}\n"
+        f"last_gate    : {cur['last_gate']}\n"
+        f"open_fork    : {cur['open_fork']}\n"
+        f"updated      : {cur['updated']}"
+    )
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="docmirror-cursor", add_help=True,
+                                 description="doc-mirror operating state-graph cursor (the 'you are here' pin)")
+    sub = ap.add_subparsers(dest="cmd")
+
+    sub.add_parser("show", help="print the current cursor (default)")
+    sub.add_parser("json", help="print the raw cursor JSON")
+    sub.add_parser("leg", help="print the injectable instruction leg for the current phase")
+    sub.add_parser("clear", help="reset the cursor to empty (phase=orient)")
+
+    s_set = sub.add_parser("set", help="update cursor fields")
+    s_set.add_argument("--phase", choices=PHASES)
+    s_set.add_argument("--repo", dest="active_repo")
+    s_set.add_argument("--module", dest="active_module")
+    s_set.add_argument("--pathway")
+    s_set.add_argument("--gate", dest="last_gate")
+    s_set.add_argument("--open", dest="open_fork")
+
+    s_adv = sub.add_parser("advance", help="set last_gate")
+    s_adv.add_argument("gate")
+
+    args = ap.parse_args()
+    cmd = args.cmd or "show"
+    cur = _load()
+
+    if cmd == "show":
+        print(_fmt(cur))
+        print(f"\nleg: {LEGS.get(cur['phase'], '(no leg for this phase)')}")
+    elif cmd == "json":
+        print(json.dumps(cur, indent=2))
+    elif cmd == "leg":
+        print(LEGS.get(cur["phase"], "(no leg for this phase)"))
+    elif cmd == "clear":
+        cur = dict(EMPTY)
+        _save(cur)
+        print("cursor cleared (phase=orient).")
+    elif cmd == "set":
+        changed = []
+        for f in ("phase", "active_repo", "active_module", "pathway", "last_gate", "open_fork"):
+            v = getattr(args, f, None)
+            if v is not None:
+                cur[f] = v
+                changed.append(f)
+        if not changed:
+            print("nothing to set. give --phase/--repo/--module/--pathway/--gate/--open.", file=sys.stderr)
+            return 2
+        _save(cur)
+        print(_fmt(cur))
+    elif cmd == "advance":
+        cur["last_gate"] = args.gate
+        _save(cur)
+        print(f"last_gate -> {args.gate}")
+    else:
+        ap.print_help()
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

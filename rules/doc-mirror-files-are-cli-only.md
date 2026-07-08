@@ -1,4 +1,4 @@
-# Doc-Mirror Files Are CLI-Only — Read-Only To You Except Through The CLI — NUCLEAR NON-NEGOTIABLE
+# Doc-Mirror Files Are CLI-Only — Read-Only To You Except Through The CLI — VITAL NON-NEGOTIABLE
 
 These files are **READ-ONLY to you**. You **NEVER** create or edit them by hand — not with Write,
 Edit, MultiEdit, a Bash redirect (`>`/`>>`/`tee`/`sed -i`), a `cp`/`mv`/`rm`, or a Python heredoc. The

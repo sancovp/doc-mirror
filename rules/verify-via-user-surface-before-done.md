@@ -1,4 +1,4 @@
-# Verify Via User Surface Before Done — NUCLEAR NON-NEGOTIABLE
+# Verify Via User Surface Before Done — VITAL NON-NEGOTIABLE
 
 I am NOT ALLOWED to say "done", "works", "verified", "tested", or "<promise>DONE</promise>" until I have run the LITERAL USER-FACING SURFACE end-to-end and captured the output in the current session.
 

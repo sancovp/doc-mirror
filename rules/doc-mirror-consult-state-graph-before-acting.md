@@ -1,4 +1,4 @@
-# Consult The Doc-Mirror State Machine Before Acting — You Are A State Machine, Not Freestyling — NUCLEAR NON-NEGOTIABLE
+# Consult The Doc-Mirror State Machine Before Acting — You Are A State Machine, Not Freestyling — VITAL NON-NEGOTIABLE
 
 In a doc-mirror session you ARE a state machine. You do not decide the flow ad-hoc; you read your place
 in the machine (the CURSOR) and act on that one state's leg. **States = skills**, **transitions = each
@@ -23,7 +23,14 @@ per-turn CoR is the token that activates. (It is NOT a CoR you paste.)
 
 ## THE LAW (every action, every turn)
 1. **Read the cursor before acting** (`docmirror-cursor show`). Empty cursor ⟶ you are at **orient**
-   (read SYSTEM.md → ROOT tracker → active repo's 6 ctx → doc(m)), then SELECT a state.
+   (read SYSTEM.md → `docmirror-cursor show` → **RECURSIVELY REHYDRATE via DMN — MANDATORY, NOT a single
+   `locate`**: identify what you're working on, then call DMN repeatedly (`docmirror-read tree` → drill the
+   domain → `#3` subdomain/tag → `#6` neighborhood), pulling the ENTIRE set of entries about it in FULL
+   TEXT (read the overflow file) + following related_to/part_of, UNTIL they STOP being about your thing —
+   prove you have ALL of it (a vision = the recursive grouping of everything ever said about that feature;
+   the decisions are made, make the vision REFLECT them) BEFORE acting; a thin peek + freestyle destroys
+   work. NEVER `ls`/`cat` the flat docs/vision files, the graph IS the hierarchy; ROOT tracker = repo order),
+   then SELECT a state.
 2. **Act ONLY on that state's leg.** Every kind of work is exactly one of the 4 STATES; never do a step
    that is not a leg of one. Call the state-skill the cursor names; follow its CoR.
 3. **Advance + journal after the leg** (`docmirror-cursor set --phase <next>`, then `journal` the WHY).

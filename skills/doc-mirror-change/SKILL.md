@@ -1,6 +1,6 @@
 ---
 name: doc-mirror-change
-description: "WHAT: the CHANGE state of the doc-mirror machine — a specific module changed or has code/doc to write: read the full module boundary, make ONE correct change (dispatch an agent in USING-mode, or author directly when building the system WITH Isaac), re-derive its doc(m), doc-mirror-commit with an ORIGIN, run closure, graduate the realized idea vision(m) → doc(m). WHEN: Use immediately when the situation is — a named module changed, or there is code/doc to write for one specific module: after seework picked a code gap, or after a prompt produced an artifact to verify+commit (any of)."
+description: "WHAT: change ONE module -- read its full boundary, make the change, re-derive its doc(m), doc-mirror-commit with an ORIGIN, run closure, graduate the realized vision(m) -> doc(m). WHEN: a specific module changed or has code/doc to write -- after seework picks a code gap, or after a prompt produced an artifact to verify and commit."
 ---
 
 # doc-mirror-change — the CHANGE state (re-derive doc(m), commit, graduate vision→impl)

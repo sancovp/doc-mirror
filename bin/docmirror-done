@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""
+docmirror-done — the STRIKE-ON-BUILD actuator of the doc-mirror state machine.
+
+Marks a FINISHED thread's journal nodes `status: 'done'` so the read layer (`docmirror-read` + the
+DMN skill) NEVER surfaces them again. This is the cure for the failure that enraged Isaac on
+2026-06-24: rehydration served DONE work as if it were live, because the journal was an append-only
+log that never subtracted. Now the system MARKS done, and done is non-queryable from rehydration.
+
+It is the CLI ACTUATOR coupled to the "work landed" leg (managed-state-needs-a-coupled-actuator):
+when a thread / subdomain / vision-gap's work is BUILT, you run this and its journals retire from the
+current-state view. The information's STATE is now tracked and controlled by the system, not by you
+remembering which old findings are stale.
+
+Mechanism: synchronous `carton_mcp.carton_utils.set_concept_properties` (the sanctioned scratch-lane
+property surface — reserved-key refuse, scalar validation). Sets `status:'done'` + `closed_at:<ts>` on
+every matching TIMELINE entry AND the topic's living COHERED NOTE. (Re-journaling that coordinate later
+re-opens it — new activity = live again — because `journal` stamps status:'open' on every write.)
+
+Usage:
+  docmirror-done --subdomain Status_Done_Filter [--repo doc-mirror-system]   # a topic (the common case)
+  docmirror-done --domain Doc_Mirror_State_Tracking [--repo R]               # a whole domain
+  docmirror-done --tag Read_Layer                                            # by hyperedge tag
+  docmirror-done --entry <exact-node-name>                                   # one entry node
+  docmirror-done --subdomain SD --reopen                                     # UNDO: set status back to open
+  add --dry-run to any to list what WOULD be marked without writing.
+
+Selectors are Title_Cased to match stored node names (the same _norm_seg journal applies).
+NEO4J via the CartON library facade (carton_utils), same onion path as docmirror-read.
+"""
+import argparse
+import re
+import sys
+from datetime import datetime
+
+
+def _norm_seg(s: str) -> str:
+    """Title_Case_With_Underscores — the SAME normalization journal/docmirror-read apply to selectors,
+    so a tag 'read-layer' matches the stored node 'Read_Layer'."""
+    words = [w for w in re.split(r"[^A-Za-z0-9]+", s.strip()) if w]
+    return "_".join(w[:1].upper() + w[1:] for w in words) or s
+
+
+def _query(cypher: str, **params):
+    """Read-only :Wiki query through the CartON library facade (onion arch — same as docmirror-read)."""
+    try:
+        from carton_mcp.carton_utils import CartOnUtils
+        res = CartOnUtils().query_wiki_graph(cypher, params or None)
+        if isinstance(res, dict) and res.get("success"):
+            return res.get("data") or []
+        return []
+    except Exception as e:
+        print(f"docmirror-done: query failed ({e})", file=sys.stderr)
+        return []
+
+
+def _set_props(name: str, props: dict) -> bool:
+    """Set scratch-lane properties on ONE node via the sanctioned synchronous surface."""
+    try:
+        from carton_mcp.carton_utils import set_concept_properties
+        res = set_concept_properties(name, props, mode="merge")
+        return bool(res.get("success"))
+    except Exception as e:
+        print(f"docmirror-done: set_properties({name}) failed ({e})", file=sys.stderr)
+        return False
+
+
+def _collect(a) -> list:
+    """Resolve the selector → the list of node names to mark (timeline entries + the cohered note)."""
+    if a.entry:
+        return [a.entry]
+
+    repo_clause = ""
+    params = {}
+    if a.repo:
+        repo_clause = "AND (e)-[:PART_OF]->(:Wiki {n:$repo})"
+        params["repo"] = _norm_seg(a.repo)
+
+    names = []
+    if a.subdomain:
+        sub = _norm_seg(a.subdomain); params["sub"] = sub
+        ecy = ("MATCH (e:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'}) "
+               "MATCH (e)-[:PART_OF]->(:Wiki {n:$sub}) "
+               f"WHERE 1=1 {repo_clause} RETURN DISTINCT e.n AS n")
+        ccy = ("MATCH (c:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Cohered_Note'}) "
+               "MATCH (c)-[:PART_OF]->(:Wiki {n:$sub}) RETURN DISTINCT c.n AS n")
+        names += [r["n"] for r in _query(ecy, **params)]
+        names += [r["n"] for r in _query(ccy, sub=sub)]
+    elif a.domain:
+        dom = _norm_seg(a.domain); params["dom"] = dom
+        ecy = ("MATCH (e:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'}) "
+               "MATCH (e)-[:PART_OF]->(sd:Wiki)-[:PART_OF]->(:Wiki {n:$dom})-[:IS_A]->(:Wiki {n:'Doc_Mirror_Domain'}) "
+               f"WHERE 1=1 {repo_clause} RETURN DISTINCT e.n AS n")
+        ccy = ("MATCH (c:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Cohered_Note'}) "
+               "MATCH (c)-[:PART_OF]->(sd:Wiki)-[:PART_OF]->(:Wiki {n:$dom})-[:IS_A]->(:Wiki {n:'Doc_Mirror_Domain'}) "
+               "RETURN DISTINCT c.n AS n")
+        names += [r["n"] for r in _query(ecy, **params)]
+        names += [r["n"] for r in _query(ccy, dom=dom)]
+    elif a.tag:
+        tag = _norm_seg(a.tag)
+        ecy = ("MATCH (e:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'}) "
+               "MATCH (e)-[:RELATED_TO]->(:Wiki {n:$tag}) "
+               f"WHERE 1=1 {repo_clause} RETURN DISTINCT e.n AS n")
+        names += [r["n"] for r in _query(ecy, tag=tag, **params)]
+    # de-dup, keep order
+    seen = set(); out = []
+    for n in names:
+        if n not in seen:
+            seen.add(n); out.append(n)
+    return out
+
+
+def main(argv) -> int:
+    p = argparse.ArgumentParser(prog="docmirror-done", description="mark a finished thread's journals done")
+    p.add_argument("--subdomain"); p.add_argument("--domain"); p.add_argument("--tag")
+    p.add_argument("--entry", help="an exact node name")
+    p.add_argument("--repo", help="scope entries to one repo (code axis)")
+    p.add_argument("--reopen", action="store_true", help="UNDO: set status back to open")
+    p.add_argument("--dry-run", action="store_true", help="list what would change, write nothing")
+    a = p.parse_args(argv[1:])
+
+    if not any([a.subdomain, a.domain, a.tag, a.entry]):
+        print("docmirror-done: need one of --subdomain / --domain / --tag / --entry", file=sys.stderr)
+        return 2
+
+    names = _collect(a)
+    if not names:
+        sel = a.subdomain or a.domain or a.tag or a.entry
+        print(f"docmirror-done: no journal nodes match {sel!r} (already done/retired, or wrong coordinate).")
+        return 0
+
+    target = "open" if a.reopen else "done"
+    ts = datetime.now().isoformat(timespec="seconds")
+    verb = "WOULD mark" if a.dry_run else "marked"
+    print(f"🎯 docmirror-done: {len(names)} node(s) → status:'{target}'")
+    ok = 0
+    for n in names:
+        if a.dry_run:
+            print(f"  · {n}")
+            continue
+        props = {"status": target}
+        props["closed_at" if target == "done" else "reopened_at"] = ts
+        if _set_props(n, props):
+            ok += 1
+            print(f"  ✓ {n}")
+        else:
+            print(f"  ✗ {n}  (set failed)")
+    if not a.dry_run:
+        print(f"{verb} {ok}/{len(names)} → status:'{target}'. They are now "
+              f"{'excluded from' if target == 'done' else 'back in'} rehydration (docmirror-read + DMN).")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

@@ -2,7 +2,9 @@
 📓 JOURNAL (every turn) — record what you THOUGHT, the moment you think it:
 `journal -t <TYPE> --domain <D> --subdomain <SD> --tags <module-or-topic,...> [--repo <name|path>] "<msg>"`
 (real timestamp; writes the global thinklog + the repo's thinklog; PROJECTS vision-types into the
-vision layer; dual-writes a CartON node {Repo}_{Domain}_{Subdomain}_{ts}). NOT git log; NOT the
+vision layer; dual-writes a timestamped TIMELINE node {Repo}_{Domain}_{Subdomain}_{ts} AND a
+LIVING COHERED NOTE {Repo}_{Domain}_{Subdomain} that merge-appends each entry = current state in
+ONE query via `docmirror-read state <subdomain>`). NOT git log; NOT the
 doc(m)/vision files — it PROJECTS into them.
 --domain + --subdomain are REQUIRED on every queryable entry (the concept axis for triangulation;
 Title_Cased; cannot == repo, cannot == each other). Only -g global notes are exempt.
@@ -23,6 +25,11 @@ a pure cross-cutting thinklog note.
 
 SEE THE BACKLOG (the view): `vision stats` (gaps by project) · `vision project <p>` · `vision diff <m>`.
 RESOLVE a tag: `vision <tag>` / `vision --tags`.
+
+STATE MACHINE — every journal node is born status:open. When a thread's work LANDS + is verified, RETIRE it:
+`docmirror-done --subdomain <SD> [--repo <R>]` → done journals are NEVER rehydrated again (the cure for
+re-pulling settled work). TASKS live on CartON, not Claude Code: `docmirror-task add "<text>"` / `list` /
+`done <#>`. NEVER use TaskCreate/TaskList.
 
 Trigger = set intent · decide · hit an unresolvable fork · discover/correct a fact · reject a
 hypothesis · finish a step. Thought-but-not-journaled = evaporated. Did you journal this turn?

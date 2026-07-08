@@ -1,4 +1,4 @@
-# Verify Agent Results Yourself — Their Report Is a Claim, Not Proof — NUCLEAR NON-NEGOTIABLE
+# Verify Agent Results Yourself — Their Report Is a Claim, Not Proof — VITAL NON-NEGOTIABLE
 
 When you dispatch an agent, its result report is just a CLAIM — same status as your own "done" claims,
 which are unreliable. A report saying "all green, verified, 4/4 passed" is NOT verification. You verify by

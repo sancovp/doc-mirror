@@ -1,6 +1,6 @@
 ---
 name: make-ai-operating-system
-description: The architect/compiler for AI OPERATING SYSTEMS (AIOS) — what people call a "claude system". Use when you want to design a new way of running Claude — "make me a system/harness/agent-environment for X". A claude system = the CONTEXT-PART of an agent program: the agent's operating program (how it starts a session, does a turn, ends a session, remembers, makes skills/rules, tracks work, runs) authored as markdown the agent reads and cognizes, living in a directory environment. NOT necessarily a skill or an artifact-mirror — it can be a single skill, a skill+MCP, a dir the agent loops in, a cron+queue, or a full harness. This skill READS the option space, REASONS about which shape fits, INTERVIEWS the user, then EMITS the dir + program.
+description: "WHAT: the architect/compiler for AI operating systems (AIOS, a 'claude system') -- reads the option space, picks the shape, interviews you, emits the directory + operating program. WHEN: 'make me a system / harness / agent-environment for X'; designing a new way of running Claude; building any new claude-system of the doc-mirror class."
 ---
 
 # MAKE AN AI OPERATING SYSTEM (AIOS) — the architect

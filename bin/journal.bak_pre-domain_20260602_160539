@@ -49,31 +49,15 @@ Usage:
     journal -t INTENT "<msg>"                                 # journal-only (INTENT never projects to vision)
     journal -t OPEN --repo soma-prolog --tags some-fork "<msg>"  # vision + (you then docmirror-sleep → echoes to Isaac)
     journal -g "<msg>"                                        # global index only, tag [global]
-    journal --convo-start -t FINDING --domain D --subdomain SD "<msg>"  # FIRST entry of a conversation (post-compact)
     journal --where [--repo X]                                # print the target paths it WOULD write, and exit
 
-  --convo-start  MARK this entry as the FIRST journal of a NEW conversation (a compaction boundary). Stamps
-              the carton node property `convo_start: true`, so the WHOLE conversation's journals are pullable
-              IN ONE QUERY, COMPLETE, NO FILTER (`docmirror-read conversation [N]` / DMN STEP 1). This is the
-              ONLY reliable conversation delimiter — set it by hand on your first journal every post-compact
-              session (the self_compact prompt + the rehydrate protocol tell you to). Without it the graph
-              cannot know where one conversation ends and the next begins.
   -t TYPE     entry type (see vision-projecting list above). Free-form ok; prefer the named ones.
   --tags a,b  comma list = the hyperedge (modules + topics) the entry is about. Drives vision projection.
   --repo X    the project this is about (registry name OR monorepo path). Overrides the cursor.
-  --domain D       REQUIRED on a queryable entry: coarse concept-axis coordinate (Title_Cased; cannot == repo).
-  --subdomain SD   REQUIRED on a queryable entry: fine concept-axis coordinate (PART_OF domain; cannot == repo/domain).
   --supersedes vN,vM   prior vision entries THIS one REPLACES — they are RETIRED from the live vision
               (preserved in git history). This is what makes staleness impossible: a correcting/deciding
               entry retires the claim it overturns instead of stacking a correction on top of the dead one.
   -g          global-only (cross-cutting thought; no per-repo, no vision).
-
-STATE MACHINE (status property): every CartON node a journal entry writes (the timeline entry AND the
-living cohered note) is born with a SCRATCH-LANE `status: open` property (+ a `session` id). The read
-layer (`docmirror-read` + the DMN skill) surfaces ONLY status<>'done', and `docmirror-done <coordinate>`
-flips a finished thread to status:'done' — so done work becomes NON-queryable from rehydration and is
-never pulled again. This is what makes doc-mirror a state machine that holds only your CURRENT (undone)
-things, instead of an append-only log that serves done work as if it were live.
 
 Always {datetime.now().isoformat(timespec=seconds)} — real timestamp, never faked.
 Repo root is derived (no hardcoded path): $DOCMIRROR_MONOREPO, else ~/.docmirror_root, else git toplevel,
@@ -156,8 +140,7 @@ def cursor_repo() -> str | None:
         return None
 
 
-def touch_cursor(rtag: str, tags: list, repo_root: Path | None, ts: str,
-                 domain: str = "", subdomain: str = "") -> None:
+def touch_cursor(rtag: str, tags: list, repo_root: Path | None, ts: str) -> None:
     """Keep the cursor's NON-PHASE fields honest on every journal event (the cursor is the agent's
     'you are here' pin; journal is the continuous signal of WHERE it is). Updates active_repo (the
     resolved repo — the field journal itself routes by, the one that rots in think-heavy sessions),
@@ -178,10 +161,6 @@ def touch_cursor(rtag: str, tags: list, repo_root: Path | None, ts: str,
         mod = next((t for t in tags if module_vision_file(t) is not None), None)
         if mod is not None:
             cur["active_module"] = mod
-        if domain:
-            cur["active_domain"] = _norm_seg(domain)
-        if subdomain:
-            cur["active_subdomain"] = _norm_seg(subdomain)
         cur["last_journal"] = ts
         CURSOR_FILE.parent.mkdir(parents=True, exist_ok=True)
         CURSOR_FILE.write_text(json.dumps(cur, indent=2))
@@ -315,14 +294,9 @@ def project_to_vision(tags: list, repo_root: Path | None, body: str, ts: str) ->
 
 # ── CartON dual-write (the SOUP-layer store) ─────────────────────────────────
 # A journal entry IS an add_concept, ASSEMBLED from its args (the agent never names/shapes it):
-#   name        = {Repo}_{Domain}_{Subdomain}_{carton-ts}   (a COORDINATE ADDRESS, not the universal name)
-#   is_a        = Doc_Mirror_Journal_{Type} (kind)   instantiates = Doc_Mirror_Journal_Entry (individual->universal)
-#   part_of     = [{Repo} (code axis), {Subdomain}]  + {Subdomain} PART_OF {Domain} (nested concept axis)
-#   description = the blob                            related_to = the tags (hyperedge cross-links)
-#   axis nodes  = {Repo} is_a Doc_Mirror_Repo · {Domain} is_a Doc_Mirror_Domain · {Subdomain} is_a
-#                 Doc_Mirror_Subdomain (re-stamped idempotently, desc replace) — TYPED so the read-layer
-#                 lookups key on the boundaries (cross-pollination/active-leaf/closure).
-#   The {Repo} x {Domain/Subdomain} x {tags} triple is what lets a lookup TRIANGULATE what an entry IS.
+#   name        = Doc_Mirror_Journal_Entry_{repo}_{carton-ts}
+#   is_a        = Doc_Mirror_Journal_{Type}    part_of = {repo}    instantiates = Doc_Mirror_Journal_Entry
+#   description = the blob                      related_to = the tags  (bidirectional)
 # It writes by QUEUEING a raw_concept json to the observation-worker daemon (the proven carton_precompact
 # path), so ingest is async (~10s). Markdown stays FULL for now (dual-write); it thins to a pointer-trace
 # only once carton is trusted (replace-before-remove). DEFAULT ON (the journal IS the graph); opt out
@@ -349,55 +323,26 @@ def _norm_seg(s: str) -> str:
     return "_".join(w[:1].upper() + w[1:] for w in words) or "X"
 
 
-def _session_id() -> str:
-    """The current conversation/session id, read from the rehydration-gate record the SessionStart
-    boundary hook writes (<root>/.docmirror/rehydration.json). Lets every journal entry carry a
-    `session` property so 'this session's work' is queryable on the graph (Isaac: every session should
-    have its task list on CartON). Fail-open: '' if unavailable (the entry still gets status)."""
-    try:
-        sf = Path(os.environ.get("DOCMIRROR_REHYDRATION") or (MONOREPO / ".docmirror" / "rehydration.json"))
-        if sf.exists():
-            return str(json.loads(sf.read_text()).get("conversation_id") or "")
-    except Exception:
-        pass
-    return ""
-
-
 def _journal_class(type_raw: str) -> str:
     """The is_a class for a journal entry: Doc_Mirror_Journal_{Type} (untyped -> _Note)."""
     return f"Doc_Mirror_Journal_{(type_raw or 'NOTE').strip().capitalize()}"
 
 
-def queue_carton(concept_name: str, description: str, relationships: list, ts: str,
-                 desc_update_mode: str | None = None, properties: dict | None = None) -> str | None:
+def queue_carton(concept_name: str, description: str, relationships: list, ts: str) -> str | None:
     """Drop a raw_concept json into the observation-worker queue (same shape carton_precompact uses).
-    desc_update_mode (when set, e.g. 'replace') tells the daemon how to update an EXISTING node's
-    description — the daemon reads it in its raw_concept path (observation_worker_daemon.py:450,
-    default 'append'). Used for idempotent AXIS/CONTAINER nodes that get re-stamped every event, so a
-    fixed one-line description does not append/bloat across a session.
-    properties (when set, e.g. {'status':'open'}) = the 🏷 SCRATCH-LANE property channel
-    (the-property-layer-doctrine): the daemon applies them via set_concept_properties AFTER the node
-    MERGE in the SAME drain (observation_worker_daemon.py:677 → :562-606), so a journal entry can carry
-    a system-controlled lifecycle state (`status` open/done). This is the state-machine property that
-    lets the read layer surface only CURRENT (undone) info — done entries are never pulled again.
     Fail-open: returns the name on success, None on any error -- never raises into the journal append."""
     try:
         import uuid
         CARTON_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
         qf = CARTON_QUEUE_DIR / f"{datetime.now():%Y%m%d_%H%M%S%f}_{uuid.uuid4().hex[:8]}.json"
-        payload = {
+        qf.write_text(json.dumps({
             "raw_concept": True,
             "concept_name": concept_name,
             "description": description,
             "relationships": relationships,
             "source": "journal",
             "timestamp": ts,
-        }
-        if desc_update_mode:
-            payload["desc_update_mode"] = desc_update_mode
-        if properties:
-            payload["properties"] = properties
-        qf.write_text(json.dumps(payload))
+        }))
         return concept_name
     except Exception:
         return None
@@ -415,10 +360,7 @@ def main(argv):
     tags = []
     repo_arg = None
     supersedes = []      # vN ids this entry REPLACES (retired from the live vision — staleness-killer)
-    domain = ""          # triangulation coordinate (concept axis, coarse) — required on queryable entries
-    subdomain = ""       # triangulation coordinate (concept axis, fine; PART_OF domain)
     where = False
-    convo_start = False  # mark this entry as the FIRST journal of a new conversation (compaction boundary)
     rest = []
     i = 0
     while i < len(args):
@@ -441,16 +383,6 @@ def main(argv):
                 print("journal: --repo needs a name or path", file=sys.stderr); return 2
             repo_arg = args[i + 1].strip()
             i += 1
-        elif a == "--domain":
-            if i + 1 >= len(args):
-                print("journal: --domain needs a value", file=sys.stderr); return 2
-            domain = args[i + 1].strip()
-            i += 1
-        elif a == "--subdomain":
-            if i + 1 >= len(args):
-                print("journal: --subdomain needs a value", file=sys.stderr); return 2
-            subdomain = args[i + 1].strip()
-            i += 1
         elif a == "--supersedes":
             if i + 1 >= len(args):
                 print("journal: --supersedes needs vN ids (e.g. v12,v15)", file=sys.stderr); return 2
@@ -458,8 +390,6 @@ def main(argv):
             i += 1
         elif a == "--where":
             where = True
-        elif a == "--convo-start":
-            convo_start = True
         else:
             rest.append(a)
         i += 1
@@ -506,27 +436,6 @@ def main(argv):
                   file=sys.stderr)
             return 3
 
-    # domain+subdomain = REQUIRED triangulation coordinates on every queryable (vision-projecting,
-    # non-global, non-commit) entry. They give the CONCEPT axis (entry PART_OF subdomain PART_OF domain)
-    # which, crossed with the repo axis (code) and the tag hyperedges, lets a lookup TRIANGULATE what a
-    # thing IS. (-g global notes + pure COMMIT narration are exempt — not triangulated entries.)
-    if wants_vision and not global_only and not is_commit:
-        missing = [n for n, v in (("--domain", domain), ("--subdomain", subdomain)) if not v]
-        if missing:
-            print(f"journal: {' and '.join(missing)} required on a queryable entry — domain+subdomain are "
-                  f"the triangulation coordinates (concept axis). Use -g for a non-triangulated note.",
-                  file=sys.stderr)
-            return 3
-        _nd, _nsd, _nr = _norm_seg(domain), _norm_seg(subdomain), _norm_seg(rtag)
-        if _nd == _nr or _nsd == _nr:
-            print(f"journal: domain/subdomain cannot equal the repo ({_nr}) — they are a DIFFERENT axis "
-                  f"(concept-space, not code-space).", file=sys.stderr)
-            return 3
-        if _nd == _nsd:
-            print(f"journal: domain and subdomain cannot be identical ({_nd}) — subdomain PART_OF domain "
-                  f"would be a self-loop.", file=sys.stderr)
-            return 3
-
     ts = datetime.now().isoformat(timespec="seconds")
     body = f"{type_prefix}{msg}"
     if supersedes:
@@ -559,99 +468,26 @@ def main(argv):
 
     # Keep the cursor's NON-PHASE fields fresh (active_repo / active_module / last_journal). PHASE is
     # never touched here — it advances only on a state transition. This is the drift fix (2026-06-01).
-    touch_cursor(rtag, tags, repo_root, ts, domain, subdomain)
+    touch_cursor(rtag, tags, repo_root, ts)
 
     # CartON dual-write (SOUP layer): a homed, durable entry ALSO becomes an add_concept queued to the
     # observation daemon. Gated (DOCMIRROR_CARTON) + fail-open; the markdown above is unchanged for now.
     if _carton_enabled() and repo_root is not None and not global_only and not is_commit:
-        nrepo, ndom, nsub = _norm_seg(rtag), _norm_seg(domain), _norm_seg(subdomain)
-        # TWO carton layers per event (minimal-A 2026-06-09):
-        #  (1) the TIMELINE entry below: {repo}_{domain}_{subdomain}_{ts} — a per-event, append-only,
-        #      individually-addressable node ordered by t (the thread / log; read-layer locate keys on it).
-        #  (2) the LIVING COHERED NOTE (added after, inside `if ref:`): {repo}_{domain}_{subdomain} (NO ts)
-        #      that MERGE-APPENDS every entry's content with a provenance separator, so "the current decided
-        #      state of this topic" is ONE node read instead of synthesizing the whole flat thread (the
-        #      06-09 rehydration-recipe REAL FIX: an evolving Zettel note per topic = the anti-double-up /
-        #      anti-thin-rehydration). Additive accumulation only here; the semantic supersede/dedup is the
-        #      deferred SOPHIA coherer-cron. The cohered note does NOT replace the timeline (that inversion
-        #      was the reverted minimal-A error — it destroyed the timeline).
-        # The STATE-MACHINE property: every journal node is born `status: open` (current/undone). The
-        # read layer (docmirror-read + DMN) surfaces only status<>'done', and `docmirror-done` flips a
-        # whole coordinate to status:'done' when its work lands — so a finished thread becomes
-        # non-queryable from rehydration and is never pulled again (the cure for serving done-as-live).
-        # `session` tags which conversation produced it (queryable "this session's work"). SCRATCH lane.
-        _sid = _session_id()
-        entry_props = {"status": "open"}
-        if _sid:
-            entry_props["session"] = _sid
-        # CONVERSATION BOUNDARY (compaction delimiter): a hand-set `--convo-start` stamps convo_start=true
-        # on THIS entry's node, marking it the FIRST journal of a new conversation. The read layer
-        # (`docmirror-read conversation` / DMN STEP 1) pulls the WHOLE conversation between consecutive
-        # convo_start markers IN ONE QUERY, COMPLETE, NO FILTER — the only reliable way to know where one
-        # conversation ends and the next begins (a time-gap heuristic does NOT track compaction). Set by
-        # hand every post-compact session (self_compact prompt + rehydrate protocol instruct it).
-        if convo_start:
-            entry_props["convo_start"] = True
-        cname = f"{nrepo}_{ndom}_{nsub}_{_carton_ts(ts)}"
+        cname = f"Doc_Mirror_Journal_Entry_{_norm_seg(rtag)}_{_carton_ts(ts)}"
         rels = [
-            {"relationship": "is_a", "related": [_journal_class(type_raw)]},            # the KIND axis
-            {"relationship": "instantiates", "related": ["Doc_Mirror_Journal_Entry"]},  # individual -> universal
-            {"relationship": "part_of", "related": [nrepo, nsub]},                      # code axis + concept-leaf
+            {"relationship": "is_a", "related": [_journal_class(type_raw)]},
+            {"relationship": "part_of", "related": [_norm_seg(rtag)]},
+            {"relationship": "instantiates", "related": ["Doc_Mirror_Journal_Entry"]},
         ]
         if tags:
-            rels.append({"relationship": "related_to", "related": tags})                # hyperedge cross-links
-        ref = queue_carton(cname, body, rels, ts, properties=entry_props)
+            rels.append({"relationship": "related_to", "related": tags})
+        ref = queue_carton(cname, body, rels, ts)
         if ref:
-            # TYPE THE AXIS NODES (the read-layer KEYSTONE, journal-design step a): each container node
-            # carries its is_a so the repo/domain/subdomain BOUNDARIES are STRUCTURAL — read-layer lookups
-            # key on `is_a Doc_Mirror_Repo` (cross-pollination/active-leaf find "repos"), `Doc_Mirror_Domain`,
-            # `Doc_Mirror_Subdomain`. Queued desc_update_mode='replace' so a node re-stamped every event
-            # stays ONE fixed line (idempotent), never appends/bloats. subdomain is ALSO nested PART_OF
-            # domain (the triangulation container edge).
-            queue_carton(nrepo, "Doc-mirror repo axis node (code axis).",
-                         [{"relationship": "is_a", "related": ["Doc_Mirror_Repo"]}], ts,
-                         desc_update_mode="replace")
-            queue_carton(ndom, "Doc-mirror concept domain (coarse concept axis).",
-                         [{"relationship": "is_a", "related": ["Doc_Mirror_Domain"]}], ts,
-                         desc_update_mode="replace")
-            queue_carton(nsub, f"Doc-mirror concept subdomain (PART_OF {ndom}).",
-                         [{"relationship": "is_a", "related": ["Doc_Mirror_Subdomain"]},
-                          {"relationship": "part_of", "related": [ndom]}], ts,
-                         desc_update_mode="replace")
             wrote.append(f"carton:{ref}")
-            # (2) LIVING COHERED NOTE — the topic-coordinate Zettel, merge-appended every event so the
-            # CURRENT DECIDED STATE of this topic is ONE node (vs synthesizing the flat thread). Name =
-            # {repo}_{domain}_{subdomain} (NO ts) so it MERGEs by coordinate; each appended piece is
-            # prefixed with a PURE-GLYPH provenance separator (no Cypher write-keyword + no linkable word,
-            # so the read layer can split() on it and the auto-linker leaves it intact — proven 06-09).
-            # piece-count = number of '⟐════' markers = "merged from N auto-deemed-related sources".
-            cohered = f"{nrepo}_{ndom}_{nsub}"
-            sep = f"⟐════ {ts} · {type_raw or 'NOTE'} ════⟐"
-            crels = [
-                {"relationship": "is_a", "related": ["Doc_Mirror_Cohered_Note"]},  # distinct from timeline entries
-                {"relationship": "part_of", "related": [nrepo, nsub]},             # findable by repo + subdomain
-            ]
-            if tags:
-                crels.append({"relationship": "related_to", "related": tags})
-            cref = queue_carton(cohered, f"{sep}\n{body}", crels, ts, desc_update_mode="append",
-                                properties=entry_props)
-            if cref:
-                wrote.append(f"cohered:{cref}")
 
     note = ""
 
     print(f"📓 {ts}  {body}  →  {' + '.join(wrote)}{note}")
-    # WEB-IT REMINDER (Isaac 2026-06-25): the journal STRING is NOT the destination — every entry must be
-    # turned into retrievable GRAPH. When this entry became a carton node, echo the graphify reminder
-    # pointing at its living topic node, so the next action is to WEB IT (concepts + deps + properties),
-    # never to leave the meaning trapped in a description string.
-    _coh = next((w.split(":", 1)[1] for w in wrote if w.startswith("cohered:")), None)
-    if _coh:
-        print("🕸️  NOW WEB IT — do not leave the meaning in this string. Graphify what this entry is ABOUT:")
-        print("    • add_concept each concept named inside it, WITH relationships (deps: depends_on /")
-        print("      part_of / implements) and properties (status: done/not-done, priority).")
-        print("    • turn every VISION into a *_Task node with depends_on, so the task list IS the graph.")
-        print(f"    • keep the graph current. Grow this topic node: {_coh}")
     return 0
 
 

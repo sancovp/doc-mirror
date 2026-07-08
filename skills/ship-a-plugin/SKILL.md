@@ -1,6 +1,6 @@
 ---
 name: ship-a-plugin
-description: "WHAT: the development-flow for building AND distributing a Claude Code plugin — what a plugin is made of, how a marketplace actually works (ONE catalog that REFERENCES plugins, not a monorepo that houses their code), and the complete build → commit → install → dogfood → de-scatter flow with the gotchas that bite. WHEN: when you are about to create, package, publish, install, or distribute a Claude Code plugin or marketplace; when the user mentions a plugin, marketplace, 'ship a plugin', 'add it to the marketplace', or a one-off vs shared marketplace; or before touching .claude-plugin/plugin.json or marketplace.json (any of)."
+description: "WHAT: the dev-flow for building AND distributing a Claude Code plugin + marketplace (ONE catalog that REFERENCES plugins, not a monorepo of their code); the full build -> commit -> install -> dogfood flow + the gotchas. WHEN: creating, packaging, publishing, installing, or distributing a plugin or marketplace; before touching .claude-plugin/plugin.json or marketplace.json; user says 'ship a plugin / add to the marketplace'."
 ---
 
 # ship-a-plugin — build AND distribute a Claude Code plugin (the full flow)

@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""
+docmirror-rehydrated — the UNLOCK CLI for the doc-mirror rehydration gate.
+
+The agent runs this AFTER it has genuinely completed the DMN (doc-mirror-memory-net) rehydration
+algorithm (STEP 1-4): it sets <root>/.docmirror/rehydration.json {rehydrated: true, rehydrated_ts: now,
+entries_read: <optional>} for the CURRENT conversation_id, which re-enables all tools (the PreToolUse
+gate, docmirror_rehydration_gate.py, blocks work-tools while rehydrated==false).
+
+It preserves the conversation_id + boundary_ts written by the SessionStart boundary hook
+(docmirror_session_boundary.py) — it only flips rehydrated. If no boundary record exists yet, it creates
+one (rehydrated=true) so running it is always safe.
+
+  docmirror-rehydrated [N]      mark the current conversation rehydrated; N = optional entries_read count
+
+Resolves <root> the SAME way docmirror-cursor does (env DOCMIRROR_MONOREPO / ~/.docmirror_root / git /
+cwd), so the record is ROOT-RELATIVE (per-system) like the cursor.
+"""
+import json
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+
+
+def _root() -> Path:
+    """SAME resolution as docmirror-cursor / journal — root-relative, per-system."""
+    e = os.environ.get("DOCMIRROR_MONOREPO")
+    if e:
+        return Path(e)
+    cfg = Path.home() / ".docmirror_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            return Path(cfg.read_text().strip())
+    except Exception:
+        pass
+    try:
+        import subprocess
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if top:
+            return Path(top)
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+STATE_FILE = Path(os.environ.get("DOCMIRROR_REHYDRATION") or (_root() / ".docmirror" / "rehydration.json"))
+
+
+def main() -> int:
+    entries_read = None
+    if len(sys.argv) > 1:
+        try:
+            entries_read = int(sys.argv[1])
+        except ValueError:
+            print(f"docmirror-rehydrated: optional arg must be an integer (entries_read), got "
+                  f"{sys.argv[1]!r}", file=sys.stderr)
+            return 2
+
+    # Preserve the existing conversation_id / boundary_ts (the boundary hook wrote them); just flip the flag.
+    rec = {"conversation_id": None, "boundary_ts": None}
+    if STATE_FILE.exists():
+        try:
+            rec = json.loads(STATE_FILE.read_text())
+        except Exception:
+            rec = {"conversation_id": None, "boundary_ts": None}
+
+    rec["rehydrated"] = True
+    rec["rehydrated_ts"] = datetime.now().isoformat()
+    rec["entries_read"] = entries_read
+
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps(rec, indent=2))
+
+    cid = rec.get("conversation_id") or "(none)"
+    extra = f" (entries_read={entries_read})" if entries_read is not None else ""
+    print(f"✓ doc-mirror rehydration UNLOCKED for conversation {cid}{extra}. All tools re-enabled.")
+    print(f"  record: {STATE_FILE}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

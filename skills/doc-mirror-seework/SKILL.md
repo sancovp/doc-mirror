@@ -1,6 +1,6 @@
 ---
 name: doc-mirror-seework
-description: "WHAT: the SEEWORK state of the doc-mirror machine — the backlog dispatcher: read the always-true VIEW (vision diff = vision(m) − doc(m) = what is NOT-yet-built), take the next prioritized pointer from the tracker, and route to the state that does it. WHEN: Use immediately when the situation is — you need to decide what to do next / 'what needs doing?': after init completes, after a change lands, after a prompt task finishes, or right after doc-mirror-boot when the cursor names no pending module (any of)."
+description: "WHAT: the backlog dispatcher -- read the vision-minus-impl gap, take the next tracker pointer, route to the state that does it. WHEN: deciding what to do next / 'what needs doing?' -- after init, after a change lands, after a prompt task finishes, or right after boot when the cursor names no pending module."
 ---
 
 # doc-mirror-seework — the SEEWORK state (read the backlog, pick the next gap, route)
@@ -52,9 +52,18 @@ Routing the picked pointer:
 - its gap is **already closed** (the idea graduated to doc(m)) → `tracker strike <ref>`, re-view.
 - **no gaps** for the active repo → `idle`.
 
+**RECONCILE THE SOPHIA BACKLOG FIRST (the post-rehydration step).** SOPHIA auto-closes a thread only when
+connected new work lands on its coordinate, so actually-done threads that were never re-journaled linger as
+false-outstanding. Before reading the view, run `docmirror-read outstanding` (the `sophia_checked`-and-open
+backlog) and **`docmirror-done` the ones whose work is actually done** (or `--domain`/`--tag` a whole shipped
+family — the safe manual family-close). Only then is the view's backlog honest. (Per the DMN post-rehydration
+reconciliation step + `keep-the-rollup-current`.)
+
 ## CoR (this state's binding + transition)
 
-Now that I've read `doc-mirror-seework`, I will read the VIEW (`vision stats` → `vision project`/`diff`
+Now that I've read `doc-mirror-seework`, I will FIRST reconcile the SOPHIA backlog (`docmirror-read
+outstanding` → `docmirror-done` the actually-done threads / a shipped `--domain`/`--tag` family) so the
+backlog is honest, THEN read the VIEW (`vision stats` → `vision project`/`diff`
 for the active repo), then take the next prioritized pointer from the tracker (or PRIORITIZE the gaps and
 write the plan first with `tracker add <ref>` if none exists). Then I route: if the pointer is code/doc to
 write I `docmirror-cursor set --phase change` and call `doc-mirror-change`; if it needs an agent task I set

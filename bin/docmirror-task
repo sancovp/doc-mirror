@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""
+docmirror-task — the per-session TASK LIST, on CartON, in the doc-mirror graph.
+
+Isaac, 2026-06-24: "WE DO NOT USE CLAUDE CODE TASK LISTS. YOU PUT TASKS IN CARTON CONNECTED TO THE
+DOC-MIRROR GRAPH. EVERY SINGLE SESSION SHOULD HAVE ITS TASK LIST ON CARTON." The Claude Code task list is
+per-session, ephemeral, and invisible to the graph. This puts tasks where everything else lives — as
+`:Wiki` nodes carrying a `status` property the system controls, connected to the repo + a session node —
+so the task list survives, is queryable, and obeys the SAME state machine as journal entries (open work
+shows, done work is retired).
+
+The shape it builds:
+  (t:Wiki {Doc_Mirror_Task_<sid8>_<NNN>})-[:IS_A]->(:Doc_Mirror_Task)
+     status: open|in_progress|done   order: N   session: <id>   created_at/closed_at
+  (t)-[:PART_OF]->(:Doc_Mirror_Session_<sid8>)-[:IS_A]->(:Doc_Mirror_Session)   # the per-session list
+  (t)-[:PART_OF]->(:<Repo_Title_Case>)                                          # code axis (doc-mirror graph)
+
+Commands:
+  docmirror-task add "<text>" [--repo R]      create an OPEN task (auto-ordered) in this session's list
+  docmirror-task list [--all] [--session S]   this session's OPEN tasks (--all = include done/in_progress)
+  docmirror-task start <order|name>           status -> in_progress
+  docmirror-task done  <order|name>           status -> done (+ closed_at) — retired from the open list
+  docmirror-task reopen <order|name>          status -> open
+
+Session id = the conversation id from <root>/.docmirror/rehydration.json (same as journal's `session`).
+Writes are SYNCHRONOUS via the neo4j driver (immediate add→list consistency); a Task is a scratch-lane
+node (no SOMA trail), so a direct MERGE+SET is the sanctioned write for it.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+
+NEO4J_URI = os.getenv("NEO4J_URI", "bolt://host.docker.internal:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
+
+
+def _monorepo() -> Path:
+    e = os.environ.get("DOCMIRROR_MONOREPO")
+    if e:
+        return Path(e)
+    cfg = Path.home() / ".docmirror_root"
+    try:
+        if cfg.exists() and cfg.read_text().strip():
+            return Path(cfg.read_text().strip())
+    except Exception:
+        pass
+    try:
+        import subprocess
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+        if top:
+            return Path(top)
+    except Exception:
+        pass
+    return Path.cwd()
+
+
+MONOREPO = _monorepo()
+
+
+def _norm_seg(s: str) -> str:
+    words = [w for w in re.split(r"[^A-Za-z0-9]+", s.strip()) if w]
+    return "_".join(w[:1].upper() + w[1:] for w in words) or "X"
+
+
+def _session_id() -> str:
+    """The conversation id (same source journal uses for its `session` property)."""
+    try:
+        sf = Path(os.environ.get("DOCMIRROR_REHYDRATION") or (MONOREPO / ".docmirror" / "rehydration.json"))
+        if sf.exists():
+            return str(json.loads(sf.read_text()).get("conversation_id") or "")
+    except Exception:
+        pass
+    return ""
+
+
+def _active_repo() -> str:
+    try:
+        cf = Path(os.environ.get("DOCMIRROR_CURSOR") or (MONOREPO / ".docmirror" / "cursor.json"))
+        if cf.exists():
+            return str(json.loads(cf.read_text()).get("active_repo") or "")
+    except Exception:
+        pass
+    return ""
+
+
+def _driver():
+    from neo4j import GraphDatabase
+    return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+
+def _run(cypher: str, **params):
+    drv = _driver()
+    try:
+        with drv.session() as s:
+            return [dict(r) for r in s.run(cypher, **params)]
+    finally:
+        drv.close()
+
+
+def _sid8(sid: str) -> str:
+    return (sid or "nosession").split("-")[0][:8] or "nosession"
+
+
+def _session_node(sid: str) -> str:
+    return f"Doc_Mirror_Session_{_norm_seg(_sid8(sid))}"
+
+
+def _resolve(ref: str, sid: str):
+    """Resolve a task ref (an order number for THIS session, or a full node name) to its node name."""
+    if ref.isdigit():
+        rows = _run("""MATCH (t:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Task'})
+                       WHERE t.session=$sid AND t.order=$o RETURN t.n AS n""",
+                    sid=sid, o=int(ref))
+        return rows[0]["n"] if rows else None
+    rows = _run("MATCH (t:Wiki {n:$n})-[:IS_A]->(:Wiki {n:'Doc_Mirror_Task'}) RETURN t.n AS n", n=ref)
+    return rows[0]["n"] if rows else None
+
+
+def cmd_add(a) -> int:
+    sid = _session_id()
+    repo = _norm_seg(a.repo) if a.repo else _norm_seg(_active_repo() or "Doc_Mirror_System")
+    text = " ".join(a.text).strip()
+    if not text:
+        print("docmirror-task add: empty task text", file=sys.stderr); return 2
+    # next order within this session
+    rows = _run("MATCH (t:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Task'}) WHERE t.session=$sid "
+                "RETURN coalesce(max(t.order),0) AS mx", sid=sid)
+    order = (rows[0]["mx"] if rows else 0) + 1
+    name = f"Doc_Mirror_Task_{_norm_seg(_sid8(sid))}_{order:03d}"
+    ts = datetime.now().isoformat(timespec="seconds")
+    snode = _session_node(sid)
+    _run("""
+        MERGE (t:Wiki {n:$name})
+          SET t.c=$cn, t.d=$text, t.status='open', t.order=$order, t.session=$sid,
+              t.repo=$repo, t.created_at=$ts, t.source='docmirror-task'
+        MERGE (k:Wiki {n:'Doc_Mirror_Task'}) SET k.c='doc_mirror_task'
+        MERGE (t)-[:IS_A]->(k)
+        MERGE (s:Wiki {n:$snode}) SET s.c=$snc
+        MERGE (sk:Wiki {n:'Doc_Mirror_Session'}) SET sk.c='doc_mirror_session'
+        MERGE (s)-[:IS_A]->(sk)
+        MERGE (t)-[:PART_OF]->(s)
+        MERGE (r:Wiki {n:$repo})
+        MERGE (t)-[:PART_OF]->(r)
+    """, name=name, cn=name.lower(), text=text, order=order, sid=sid, repo=repo, ts=ts,
+         snode=snode, snc=snode.lower())
+    print(f"➕ task #{order} [{repo}] {text}   ({name})")
+    return 0
+
+
+def cmd_list(a) -> int:
+    sid = a.session or _session_id()
+    where = "t.session=$sid" + ("" if a.all else " AND coalesce(t.status,'open') <> 'done'")
+    rows = _run(f"""MATCH (t:Wiki)-[:IS_A]->(:Wiki {{n:'Doc_Mirror_Task'}})
+                    WHERE {where}
+                    RETURN t.order AS o, coalesce(t.status,'open') AS status, t.repo AS repo, t.d AS text
+                    ORDER BY t.order""", sid=sid)
+    scope = "ALL" if a.all else "OPEN"
+    print(f"📋 doc-mirror task list ({scope}) — session {_sid8(sid)}:")
+    if not rows:
+        print("  (none — `docmirror-task add \"<text>\"` to create one)"); return 0
+    mark = {"open": "⬜", "in_progress": "🔄", "done": "✅"}
+    for r in rows:
+        print(f"  {mark.get(r['status'],'⬜')} #{r['o']:>2} [{r['repo']}] {r['text']}")
+    return 0
+
+
+def _set_status(a, target: str) -> int:
+    sid = _session_id()
+    name = _resolve(a.ref, sid)
+    if not name:
+        print(f"docmirror-task: no task matches {a.ref!r} in this session", file=sys.stderr); return 1
+    ts = datetime.now().isoformat(timespec="seconds")
+    extra = ", t.closed_at=$ts" if target == "done" else ""
+    _run(f"MATCH (t:Wiki {{n:$name}}) SET t.status=$st{extra}", name=name, st=target, ts=ts)
+    print(f"{'✅' if target=='done' else '🔄' if target=='in_progress' else '⬜'} task → {target}: {name}")
+    return 0
+
+
+def main(argv) -> int:
+    p = argparse.ArgumentParser(prog="docmirror-task", description="per-session task list on CartON")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    pa = sub.add_parser("add"); pa.add_argument("text", nargs="+"); pa.add_argument("--repo")
+    pl = sub.add_parser("list"); pl.add_argument("--all", action="store_true"); pl.add_argument("--session")
+    for c in ("start", "done", "reopen"):
+        pc = sub.add_parser(c); pc.add_argument("ref", help="task order number (this session) or full node name")
+    a = p.parse_args(argv[1:])
+    if a.cmd == "add":
+        return cmd_add(a)
+    if a.cmd == "list":
+        return cmd_list(a)
+    return _set_status(a, {"start": "in_progress", "done": "done", "reopen": "open"}[a.cmd])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

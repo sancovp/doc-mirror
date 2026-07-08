@@ -1,6 +1,6 @@
 ---
 name: doc-mirror
-description: The invariant procedure that produces and maintains a 1:1 documentation mirror of ANY codebase. Use whenever you need to understand, document, begin working on, or re-sync a codebase, or when a module changes. Produces the SAME deterministic structure every run for every agent. Forbids random documents.
+description: "WHAT: THE LAW of doc-mirror -- the 4 legal doc-layer file kinds, deterministic addressing, the doc(m) template, the closure test, fork-on-change. The invariant every state operates under. WHEN: you need the rule for what a doc(m)/vision(m)/journal/tracker IS or where it lives; classifying a doc-layer file; unsure whether an action is legal in the machine."
 ---
 
 # DOC-MIRROR — the operating state graph (index)

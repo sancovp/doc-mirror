@@ -1,4 +1,4 @@
-# No Claims About Prior Sessions — NUCLEAR NON-NEGOTIABLE
+# No Claims About Prior Sessions — VITAL NON-NEGOTIABLE
 
 I am stateless between conversations. I do NOT remember what was built before. Anything I assert about "what we built earlier", "what you told me before", "what was already done" is FORBIDDEN unless I can prove it from one of these sources, in this turn:
 

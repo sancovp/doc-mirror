@@ -1,6 +1,6 @@
 ---
 name: understand-metastack
-description: "WHAT: metastack (the pydantic-stack-core / PSC library) — how to generate structured text (markdown, docs, blogs, READMEs, prompts, reports, code) by COMPOSING small TYPED pydantic pieces into a tree that renders itself recursively, instead of hand-rolling f-strings (which is how you get garbled/duplicated output). Three parts: RenderablePiece (a typed model that render()s itself), MetaStack (a list of pieces joined by a separator; pieces nest as typed fields), FractalPattern/FractalStage (a built-in template for staged transformations like Hero's Journey / AIDA). WHEN: when you need to generate or FIX any structured-text renderer (a blog, README, doc, prompt body, report); when output is garbled/duplicated because it was built with ad-hoc string concatenation; or when the user mentions metastack, pydantic-stack-core, PSC, RenderablePiece, MetaStack, FractalPattern, or composing renderable pieces (any of)."
+description: "WHAT: metastack (pydantic-stack-core) -- generate structured text (blog/README/doc/prompt/report) by composing small TYPED renderable pieces into a self-rendering tree, NOT hand-rolled f-strings that garble/duplicate. WHEN: building or FIXING any structured-text renderer; output is garbled/duplicated from string concatenation; user mentions metastack / PSC / RenderablePiece / MetaStack / FractalPattern."
 ---
 
 # understand-metastack — compose typed pieces, never hand-roll f-strings

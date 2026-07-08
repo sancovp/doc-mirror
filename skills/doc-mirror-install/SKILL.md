@@ -1,6 +1,6 @@
 ---
 name: doc-mirror-install
-description: "WHAT: the install/setup WIZARD for the doc-mirror plugin — it places doc-mirror's command-line tools (journal, vision, cursor, commit, search) on your PATH and records where the plugin lives, performing the host setup itself and telling you exactly what to run if the environment blocks it; non-destructive. WHEN: right after installing or enabling the doc-mirror plugin (first-time setup), or when a doc-mirror command is 'command not found', or when 'docmirror search' cannot find its prompt store (any of)."
+description: "WHAT: install/setup wizard -- puts doc-mirror's CLIs (journal, vision, cursor, commit, search) on PATH and records where the plugin lives. WHEN: right after installing/enabling the doc-mirror plugin (first-time setup); or a doc-mirror command is 'command not found'; or 'docmirror search' cannot find its prompt store."
 ---
 
 # doc-mirror-install — the install wizard (run once, right after enabling the plugin)

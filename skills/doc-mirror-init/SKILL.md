@@ -1,6 +1,6 @@
 ---
 name: doc-mirror-init
-description: "WHAT: the INIT state of the doc-mirror machine (INITIALIZES a codebase's mirror; NOT the session entry — that is doc-mirror-boot) — first-time mirroring of a codebase that has none (enumerate modules → write doc(m)=IMPL + vision(m)=VISION → synthesize the 6 context files → derive layers → closure test). WHEN: Use immediately when the situation is — the active codebase has NO doc-mirror yet (no docs/mirror/ AND no context/progress-tracker.md): a fresh repo to mirror. Reached from seework (you found an unmirrored repo) or from doc-mirror-boot/SELECT when the active repo isn't mirrored (any of)."
+description: "WHAT: first-time mirror a codebase that has none (enumerate modules -> write doc(m)=IMPL + vision(m)=VISION -> the 6 context files -> closure test). WHEN: the active repo has NO docs/mirror/ and NO progress-tracker yet (a fresh repo to mirror); reached from seework or boot when the active repo is unmirrored."
 ---
 
 # doc-mirror-init — the INIT state (first-mirror an unmirrored codebase)

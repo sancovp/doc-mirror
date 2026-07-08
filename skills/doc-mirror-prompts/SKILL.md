@@ -1,6 +1,6 @@
 ---
 name: doc-mirror-prompts
-description: "WHAT: the PROMPT state of the doc-mirror machine — the prompt-skill library, a searchable store of reusable, reliability-scored prompts (each a dormant skill-package dir) for getting an agent to DO a task. WHEN: Use immediately when the situation is — you need an agent to DO a task: from change (you're the commander, dispatch an agent to make the change), from seework (a picked gap that is an agent task), or from init (dispatch the templated doc(m)+vision(m) team); or when you say 'find a prompt / prompt-skill for X', 'search the prompts', 'add/score/goldenize a prompt' (any of)."
+description: "WHAT: the reliability-scored prompt-skill library for getting an AGENT to DO a task. WHEN: you need to dispatch an agent to do a task; or you say 'find / add / score / goldenize a prompt-skill for X' -- from change (dispatch the worker), seework (a gap that is an agent task), or init (the doc-gen team)."
 ---
 
 # doc-mirror-prompts — the prompt-skill store (the one door)

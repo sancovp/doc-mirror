@@ -8,9 +8,13 @@
 #
 # Run from the codebase root C being mirrored.
 # Usage:
-#   doc-mirror-commit <module-relpath> "<what changed>" ["<why>"] ["<origin>"]
+#   doc-mirror-commit <module-relpath> "<what changed>" ["<why>"] ["<origin>"] [--doc-from <file>]
 # Example:
 #   doc-mirror-commit soma_prolog/core.py "surface ONT in report" "core-sentence port" "vision:soma_prolog/core.py"
+#
+# --doc-from <file>: the SANCTIONED placement lane for re-derived doc(m) content. docs/mirror/** is
+# guarded read-only (docmirror_readonly_guard); this CLI copies <file> (must start with "# doc(m):")
+# onto docs/mirror/<module>.md itself, atomically with the commit — no guard bypass needed.
 #
 # ORIGIN INVARIANT (HARD): every CODE-changing commit must reference its origin — a VISION it realizes
 # (incl. refactors — a refactor is a vision) OR a BUG it fixes (a GitHub issue). A code change with
@@ -40,11 +44,13 @@ set -euo pipefail
 #                       this is topic->module graduation. Omit for the within-module case.
 REALIZES=""
 REALIZES_FROM=""
+DOC_FROM=""
 POS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --realizes) REALIZES="${2:-}"; shift 2;;
     --realizes-from) REALIZES_FROM="${2:-}"; shift 2;;
+    --doc-from) DOC_FROM="${2:-}"; shift 2;;
     *) POS+=("$1"); shift;;
   esac
 done
@@ -55,7 +61,7 @@ WHAT="${2:-}"
 WHY="${3:-}"
 ORIGIN="${4:-}"
 if [ -z "$MODULE" ] || [ -z "$WHAT" ]; then
-  echo 'usage: doc-mirror-commit <module-relpath> "<what changed>" ["<why>"] ["<origin>"] [--realizes v3,v7]' >&2
+  echo 'usage: doc-mirror-commit <module-relpath> "<what changed>" ["<why>"] ["<origin>"] [--realizes v3,v7] [--doc-from <file>]' >&2
   exit 1
 fi
 
@@ -65,6 +71,26 @@ DOC="docs/mirror/${MODULE}.md"
 VISION="docs/vision/${MODULE}.md"
 # realizing a vision IS the origin — satisfy the ORIGIN invariant when --realizes is given.
 if [ -n "$REALIZES" ] && [ -z "$ORIGIN" ]; then ORIGIN="vision:realizes ${REALIZES}"; fi
+
+# --doc-from: sanctioned placement of re-derived doc(m) content. THIS CLI is the legal writer
+# for docs/mirror/**, so placement happens here, atomically with the commit that follows.
+if [ -n "$DOC_FROM" ]; then
+  if [ ! -s "$DOC_FROM" ]; then
+    echo "REFUSED: --doc-from '$DOC_FROM' does not exist or is empty." >&2
+    exit 1
+  fi
+  FIRST_LINE="$(head -n 1 "$DOC_FROM")"
+  case "$FIRST_LINE" in
+    "# doc(m):"*) ;;
+    *)
+      echo "REFUSED: --doc-from '$DOC_FROM' is not a doc(m) — first line must start with '# doc(m):'" >&2
+      echo "  (actual first line: ${FIRST_LINE})" >&2
+      exit 1;;
+  esac
+  mkdir -p "$(dirname "$DOC")"
+  cp "$DOC_FROM" "$DOC"
+  echo "placed doc(m) from $DOC_FROM -> $DOC"
+fi
 
 # returns 0 if path has staged, unstaged, or untracked changes
 changed() {

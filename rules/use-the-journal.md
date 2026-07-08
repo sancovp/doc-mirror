@@ -16,7 +16,10 @@ The CANONICAL form of a queryable entry carries its TRIANGULATION COORDINATES:
   write; **neither may equal the repo, and they may not equal each other.**
 - It appends `{datetime.now()}  <TYPE>: <msg>` to the ACTIVE repo's `context/journal/YYYY-MM.md` AND a
   `[repo]`-tagged line to the GLOBAL index (`$DOCMIRROR_JOURNAL_DIR/YYYY-MM.md`); projects vision-types into
-  the vision layer; and dual-writes a CartON SOUP node named `{Repo}_{Domain}_{Subdomain}_{ts}`.
+  the vision layer; and dual-writes TWO CartON nodes — a timestamped TIMELINE entry
+  `{Repo}_{Domain}_{Subdomain}_{ts}` (per-event, append-only log) AND a LIVING COHERED NOTE
+  `{Repo}_{Domain}_{Subdomain}` (no ts) that merge-appends every entry with a `⟐════` provenance
+  separator, so the CURRENT DECIDED STATE of a topic is ONE node (`docmirror-read state <subdomain>`).
 - `journal -g "<msg>"` — a pure cross-cutting thought: GLOBAL index only, tagged `[global]`. The ONLY form
   EXEMPT from domain/subdomain (it is not a triangulated entry). Use for system-level notes not about one repo.
 - `journal --where` — print the target paths (don't guess where it writes).
@@ -58,6 +61,23 @@ it evaporates. The cost is one `>>` line — pay it every time.
   (you write the why ONCE in the journal; it projects to the changelog). The commit must also cite its ORIGIN
   (a vision it realizes / a bug it fixes) or it is refused.
 - (BUG → GitHub issue projection is designed but not built yet; for now a `journal -t FINDING`/note suffices.)
+
+## The STATE MACHINE — status:open/done; tasks on CartON (doc-mirror IS a state machine, not a log)
+
+Every journal node (timeline entry + cohered note) is born `status: 'open'` (a scratch-lane property the
+system sets). The read layer (`docmirror-read` + the DMN skill) surfaces ONLY `status<>'done'` — so the
+moment a thread's work LANDS, you retire its journals and they are NEVER rehydrated again. Information has
+a state; the system tracks it; you control it. The two CLIs:
+
+- **`docmirror-done --subdomain <SD> [--repo <R>]`** (also `--domain`/`--tag`/`--entry`) — the STRIKE-ON-BUILD
+  actuator. Run it the moment a thread/subdomain's work is built + verified: it flips every matching entry +
+  the cohered note to `status:'done'`. `--dry-run` previews; `--reopen` undoes. Re-journaling that coordinate
+  re-opens it (new activity = live again). **Do this as you finish work** — a thread left un-done-marked is
+  the bug that makes a future you re-pull settled work and re-ask "is X done?".
+- **`docmirror-task add "<text>"` / `list` / `start <#>` / `done <#>`** — the per-session TASK LIST, on CartON,
+  in the doc-mirror graph (`Doc_Mirror_Task` nodes PART_OF a session node + the repo). **We do NOT use Claude
+  Code task lists (TaskCreate/TaskList) — ever.** Tasks live here so they are queryable, survive, and obey the
+  same open/done state machine. `list` shows OPEN; `list --all` includes done.
 
 ## The hard distinction (never collapse these)
 - **journal** = what you THOUGHT (thinklog). **git log** = what CHANGED (changelog). **vision(m)** = ideas not

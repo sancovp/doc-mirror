@@ -7,9 +7,10 @@ The doc-mirror CLIs were WRITE-ONLY to CartON: `journal` deposits a SOUP mereolo
 RELATED_TO) but NOTHING read it back — so the cursor was a hand-cranked flat string that
 could not represent repo hierarchy or cross-repo hyperedges. This CLI is the read side:
 each lookup is a TYPED TRAVERSAL over the UARL core-sentence predicates the graph already
-carries. Engine = direct neo4j (read-only Cypher), matching what the carton MCP's
-query_wiki_graph runs (carton_utils.py:868) — a standalone CLI cannot call the MCP tool, so
-it connects to the same neo4j via the NEO4J_* env. READ-ONLY: write keywords are refused.
+carries. Engine = the CartON LIBRARY FACADE `carton_utils.query_wiki_graph` (onion arch: an MCP
+IS a python library, so we import + call the library directly — one read path, through CartON,
+inheriting its canonical wiki-link strip). Falls back to the raw neo4j driver (NEO4J_* env) only
+if carton_mcp is unavailable. READ-ONLY: write keywords are refused.
 
 Depends on the TYPED AXIS NODES emitted by `journal` (is_a Doc_Mirror_Repo/_Domain/_Subdomain)
 — so coverage is the set of entries journaled since that emission landed (step a). A schema
@@ -21,9 +22,36 @@ needs CA :File/doc(m) nodes):
   vision  <selector>  #3  entries about a coordinate: --tag T | --subdomain SD | --domain D
   cross   [--limit]   #4  cross-pollination: entries reaching >=2 distinct repos (the hyperedges)
   network <concept>   #6  fuzzy-mereo: the n-hop neighborhood of a concept (--depth 1..3)
+  tree    [--repo R]  #7  the HIERARCHY readout: domain → subdomain → entry-counts (the graph IS the
+                          tree — never `ls` the flat docs/vision/ files; --domain D drills to entries)
+  state   <subdomain> #8  the topic's CURRENT DECIDED STATE in ONE read — JIT-prefers SOPHIA's cohered
+                          node (Doc_Mirror_Sophia_Note) if she made one, else the append cohered note
+                          (rehydrate with THIS first; drill the timeline only if needed)
+
+DONE-FILTER (the state machine): every rehydration lookup (locate/vision/cross/tree/state) EXCLUDES
+nodes whose `status` property is 'done' (`coalesce(status,'open') <> 'done'`) — so once a thread's work
+lands and `docmirror-done <coordinate>` marks its journals done, they are NEVER surfaced again. The read
+layer shows only CURRENT (undone) state. (No status property = open = shown. `network` is exempt — it is
+a concept explorer, not a rehydration surface.)
+
+THE STORED SHAPE (what you can query — this is the schema the journal writes; DMN documents it too):
+  • TWO layers per event (minimal-A): (a) the TIMELINE entry = a node {Repo}_{Domain}_{Subdomain}_{ts}
+    (per-event, append-only, ordered by t) INSTANTIATES Doc_Mirror_Journal_Entry; (b) the LIVING COHERED
+    NOTE = a node {Repo}_{Domain}_{Subdomain} (NO ts) IS_A Doc_Mirror_Cohered_Note, PART_OF [{Repo},{Subdomain}],
+    that merge-appends every entry with a '⟐════' provenance separator = current decided state in one read (#8).
+  • the timeline entry IS_A Doc_Mirror_Journal_{Type} (Finding/Decision/Vision/Hypothesis/Open/Intent/Note = the STATUS).
+  • CONCEPT AXIS (the hierarchy): entry PART_OF {Subdomain} ; {Subdomain} PART_OF {Domain}
+    (typed: {Domain} IS_A Doc_Mirror_Domain, {Subdomain} IS_A Doc_Mirror_Subdomain).
+  • CODE AXIS: entry PART_OF {Repo} ({Repo} IS_A Doc_Mirror_Repo).
+  • HYPEREDGES: entry RELATED_TO {Tag} (cross-links; auto-stubbed concept nodes you can later evolve).
+  → so the graph is ALREADY a hierarchy (repo × domain→subdomain → entries) + a tag web. Query it; the
+    flat docs/vision/_*.md files are a secondary projection, NOT the source of the hierarchy.
 
 Usage:
   docmirror-read locate
+  docmirror-read tree                       # the whole hierarchy: domain → subdomain (entry counts)
+  docmirror-read tree --repo scalable-publishing
+  docmirror-read tree --domain Gnosys       # drill: that domain's subdomains → their entries
   docmirror-read vision --tag read-layer
   docmirror-read vision --subdomain Read_Layer_Build --limit 20
   docmirror-read cross
@@ -54,16 +82,29 @@ def _norm_seg(s: str) -> str:
 
 
 def _run(cypher: str, **params):
-    """Run a read-only Cypher against the :Wiki graph; return list[dict]. Refuses writes (defense
-    in depth — this CLI only ever builds MATCH...RETURN, but never let a write through)."""
+    """Run a read-only Cypher against the :Wiki graph; return list[dict].
+    ONION ARCH: an MCP IS a python library, so we read THROUGH the CartON library facade
+    (carton_utils.query_wiki_graph) — one read path, through CartON, inheriting its canonical
+    wiki-link strip so no `_itself.md` links ever render. Falls back to the raw neo4j driver ONLY if
+    carton_mcp is unavailable (e.g. a lean container / DOCMIRROR_CARTON=0). Refuses writes (defense in depth)."""
     if _WRITE.search(cypher):
         print("docmirror-read: refused — read layer is READ-ONLY (no CREATE/MERGE/DELETE/SET).",
               file=sys.stderr)
         sys.exit(2)
+    # Primary: the carton library facade (clean, stripped data — the onion path Isaac mandated).
+    try:
+        from carton_mcp.carton_utils import CartOnUtils
+        res = CartOnUtils().query_wiki_graph(cypher, params or None)
+        if isinstance(res, dict) and res.get("success"):
+            return res.get("data") or []
+        # library returned an error dict → fall through to the raw driver
+    except Exception:
+        pass
+    # Fallback: raw neo4j driver (carton library absent). This path does NOT strip wiki-links.
     try:
         from neo4j import GraphDatabase
     except ImportError:
-        print("docmirror-read: the 'neo4j' driver is not installed.", file=sys.stderr)
+        print("docmirror-read: neither carton_mcp nor the neo4j driver is available.", file=sys.stderr)
         sys.exit(3)
     drv = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
     try:
@@ -90,6 +131,7 @@ def _emit(rows, as_json, headline, empty="(none)"):
 def cmd_locate(a):
     cy = """
     MATCH (e:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'})
+    WHERE coalesce(e.status,'open') <> 'done'
     WITH e ORDER BY e.t DESC LIMIT 1
     OPTIONAL MATCH (e)-[:PART_OF]->(r:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Repo'})
     OPTIONAL MATCH (e)-[:PART_OF]->(sd:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Subdomain'})
@@ -106,6 +148,7 @@ def cmd_vision(a):
     if a.tag:
         cy = """
         MATCH (e:Wiki)-[:RELATED_TO]->(:Wiki {n:$val})
+        WHERE coalesce(e.status,'open') <> 'done'
         RETURN e.n AS entry, substring(e.d,0,160) AS preview, toString(e.t) AS ts
         ORDER BY e.t DESC LIMIT $lim
         """
@@ -113,6 +156,7 @@ def cmd_vision(a):
     elif a.subdomain:
         cy = """
         MATCH (e:Wiki)-[:PART_OF]->(:Wiki {n:$val})-[:IS_A]->(:Wiki {n:'Doc_Mirror_Subdomain'})
+        WHERE coalesce(e.status,'open') <> 'done'
         RETURN e.n AS entry, substring(e.d,0,160) AS preview, toString(e.t) AS ts
         ORDER BY e.t DESC LIMIT $lim
         """
@@ -120,6 +164,7 @@ def cmd_vision(a):
     elif a.domain:
         cy = """
         MATCH (e:Wiki)-[:PART_OF]->(:Wiki)-[:PART_OF]->(:Wiki {n:$val})-[:IS_A]->(:Wiki {n:'Doc_Mirror_Domain'})
+        WHERE coalesce(e.status,'open') <> 'done'
         RETURN e.n AS entry, substring(e.d,0,160) AS preview, toString(e.t) AS ts
         ORDER BY e.t DESC LIMIT $lim
         """
@@ -135,6 +180,7 @@ def cmd_vision(a):
 def cmd_cross(a):
     cy = """
     MATCH (e:Wiki)-[:PART_OF|RELATED_TO*1..3]->(r:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Repo'})
+    WHERE coalesce(e.status,'open') <> 'done'
     WITH e, collect(DISTINCT r.n) AS repos
     WHERE size(repos) >= 2
     RETURN e.n AS entry, repos, substring(e.d,0,120) AS preview
@@ -157,6 +203,150 @@ def cmd_network(a):
           empty=f"(no node named {a.concept}, or it has no neighbors)")
 
 
+# ── #7 tree — the HIERARCHY readout (the graph IS the tree; never ls the flat docs/vision/ files) ──
+def cmd_tree(a):
+    # drill: one domain → its subdomains → their entries
+    if a.domain:
+        dom = _norm_seg(a.domain)
+        cy = """
+        MATCH (e:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'})
+        WHERE coalesce(e.status,'open') <> 'done'
+        MATCH (e)-[:PART_OF]->(sd:Wiki)-[:PART_OF]->(:Wiki {n:$dom})-[:IS_A]->(:Wiki {n:'Doc_Mirror_Domain'})
+        RETURN sd.n AS subdomain, e.n AS entry, toString(e.t) AS ts
+        ORDER BY sd.n, e.t DESC LIMIT $lim
+        """
+        rows = _run(cy, dom=dom, lim=a.limit)
+        if a.json:
+            print(json.dumps(rows, indent=2, default=str)); return
+        print(f"📂 {dom}  — subdomain → entries:")
+        if not rows:
+            print("  (none — unknown domain, or no typed entries under it)"); return
+        cur = None
+        for r in rows:
+            if r["subdomain"] != cur:
+                cur = r["subdomain"]; print(f"  ├ {cur}")
+            print(f"  │   {r['entry']}   ({r['ts']})")
+        return
+    # full hierarchy: domain → subdomain → entry-count (optionally scoped to one repo)
+    if a.repo:
+        cy = """
+        MATCH (e:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'})
+        WHERE coalesce(e.status,'open') <> 'done'
+        MATCH (e)-[:PART_OF]->(:Wiki {n:$repo})
+        MATCH (e)-[:PART_OF]->(sd:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Subdomain'})
+        MATCH (sd)-[:PART_OF]->(d:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Domain'})
+        RETURN d.n AS domain, sd.n AS subdomain, count(DISTINCT e) AS entries
+        ORDER BY domain, subdomain
+        """
+        rows = _run(cy, repo=_norm_seg(a.repo))
+    else:
+        cy = """
+        MATCH (e:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'})
+        WHERE coalesce(e.status,'open') <> 'done'
+        MATCH (e)-[:PART_OF]->(sd:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Subdomain'})
+        MATCH (sd)-[:PART_OF]->(d:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Domain'})
+        RETURN d.n AS domain, sd.n AS subdomain, count(DISTINCT e) AS entries
+        ORDER BY domain, subdomain
+        """
+        rows = _run(cy)
+    if a.json:
+        print(json.dumps(rows, indent=2, default=str)); return
+    scope = f" (repo={_norm_seg(a.repo)})" if a.repo else ""
+    print(f"🌳 doc-mirror hierarchy{scope} — domain → subdomain (entries). Drill: tree --domain <D>")
+    if not rows:
+        print("  (none — no typed journal entries yet)"); return
+    cur = None
+    for r in rows:
+        if r["domain"] != cur:
+            cur = r["domain"]; print(f"📂 {cur}")
+        print(f"   {r['subdomain']}  ({r['entries']})")
+
+
+# ── #8 state — the LIVING COHERED NOTE for a topic = current decided state in ONE query ───────
+# The journal maintains a per-topic Zettel node {Repo}_{Domain}_{Subdomain} (is_a Doc_Mirror_Cohered_Note)
+# that merge-appends every entry with a '⟐════' provenance separator. This returns its FULL description =
+# everything ever said about the topic, in one read — instead of synthesizing the flat timestamped thread.
+def cmd_state(a):
+    sub = _norm_seg(a.subdomain)
+    # JIT retrieval (Isaac 2026-06-24): if SOPHIA has cohered this subdomain she wrote her OWN separate
+    # current-state node (Doc_Mirror_Sophia_Note). PREFER it; else fall back to the append cohered note.
+    # The type IS the signal — a normal caller just asks for the topic state and transparently gets
+    # SOPHIA's cohered view when she made one. SOPHIA never rewrites the append note; this only chooses
+    # which node to serve.
+    cy = """
+    MATCH (c:Wiki)-[:PART_OF]->(:Wiki {n:$sub})
+    MATCH (c)-[:IS_A]->(t:Wiki)
+    WHERE t.n IN ['Doc_Mirror_Sophia_Note','Doc_Mirror_Cohered_Note']
+      AND coalesce(c.status,'open') <> 'done'
+    WITH c, t.n AS kind, CASE t.n WHEN 'Doc_Mirror_Sophia_Note' THEN 0 ELSE 1 END AS pref
+    RETURN c.n AS node, kind,
+           size(split(coalesce(c.d,''),'⟐════'))-1 AS pieces,
+           c.d AS state
+    ORDER BY pref LIMIT 1
+    """
+    _emit(_run(cy, sub=sub), a.json, f"🧭 cohered state of {sub} (SOPHIA node if cohered, else living Zettel):",
+          empty=f"(no cohered note for subdomain {sub} yet — journal an entry at that coordinate to seed it)")
+
+
+# ── #9 outstanding — the RECONCILABLE BACKLOG (SOPHIA-examined-but-still-open = sophia_checked threads) ──
+# SOPHIA auto-closes a thread only when connected NEW work lands on its coordinate, so a thread that is
+# actually-done-but-never-re-journaled lingers as false-outstanding forever. The cure is the POST-REHYDRATION
+# RECONCILIATION step (Isaac 2026-06-24): after rehydrating, review THIS list and `docmirror-done` the ones
+# whose work is actually done (or `docmirror-done --domain/--tag` a whole shipped family), THEN pick the next
+# gap. This surfaces only sophia_checked threads (SOPHIA confirmed them outstanding) — the genuine backlog to
+# reconcile, distinct from not-yet-rolled-up threads.
+def cmd_outstanding(a):
+    cy = """
+    MATCH (e:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'})
+    WHERE coalesce(e.status,'open') <> 'done' AND e.sophia_checked = true
+    MATCH (e)-[:PART_OF]->(sd:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Subdomain'})
+    OPTIONAL MATCH (sd)-[:PART_OF]->(d:Wiki)-[:IS_A]->(:Wiki {n:'Doc_Mirror_Domain'})
+    RETURN d.n AS domain, sd.n AS subdomain, count(e) AS open_entries, toString(max(e.t)) AS newest
+    ORDER BY newest DESC LIMIT $lim
+    """
+    _emit(_run(cy, lim=a.limit), a.json,
+          "🩹 outstanding — SOPHIA-confirmed backlog to RECONCILE (docmirror-done the actually-done, then work the rest):",
+          empty="(nothing sophia_checked-and-open — SOPHIA hasn't confirmed any outstanding threads yet, or all reconciled)")
+
+
+# ── conversation — the WHOLE conversation's journals, IN ONE QUERY, COMPLETE, NO FILTER ───────────
+# Isaac's hard requirement: rehydration must pull EVERY journal of a conversation, fully (no truncation),
+# with NO status/done filter — keyed on the `convo_start` compaction-boundary marker that `journal
+# --convo-start` stamps on the FIRST entry of each conversation. A conversation = the entries between two
+# consecutive convo_start markers. N=0 = the LATEST (current) conversation; N=1 = the one before; etc.
+# This is the ONLY reliable delimiter: a time-gap heuristic does NOT track where compaction happened.
+# (Falls back to ALL entries when no convo_start marker exists yet — so it is never useless pre-marking.)
+def cmd_conversation(a):
+    n = max(0, a.n)
+    cy = """
+    MATCH (b:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'})
+    WHERE b.convo_start = true
+    WITH b.t AS bt ORDER BY b.t DESC
+    WITH collect(bt) AS bounds
+    WITH bounds,
+         CASE WHEN size(bounds) > $n THEN bounds[$n] ELSE datetime('1970-01-01T00:00:00') END AS lo,
+         CASE WHEN $n = 0 THEN datetime('9999-12-31T00:00:00')
+              WHEN size(bounds) >= $n THEN bounds[$n-1]
+              ELSE datetime('9999-12-31T00:00:00') END AS hi
+    MATCH (e:Wiki)-[:INSTANTIATES]->(:Wiki {n:'Doc_Mirror_Journal_Entry'})
+    WHERE e.t >= lo AND e.t < hi
+    RETURN e.n AS entry, e.d AS full_text, toString(e.t) AS ts ORDER BY e.t
+    """
+    rows = _run(cy, n=n)
+    if a.json:
+        print(json.dumps(rows, indent=2, default=str)); return
+    label = "LATEST (current)" if n == 0 else f"N-{n}"
+    print(f"📜 conversation {label} — {len(rows)} journals, COMPLETE, NO FILTER (between convo_start markers):")
+    if not rows:
+        print("  (none — no convo_start markers yet AND no entries; mark your first journal with "
+              "`journal --convo-start ...`)")
+        return
+    for r in rows:
+        print(f"\n──────── {r['ts']}  ·  {r['entry']} ────────")
+        print(r["full_text"])
+    print(f"\n[END conversation {label} — {len(rows)} journals]")
+
+
 def main(argv):
     p = argparse.ArgumentParser(prog="docmirror-read", description="doc-mirror CartON read layer")
     p.add_argument("--json", action="store_true", help="machine-readable JSON output")
@@ -176,8 +366,27 @@ def main(argv):
     pn.add_argument("--depth", type=int, default=1)
     pn.add_argument("--limit", type=int, default=40)
 
+    pt = sub.add_parser("tree", help="#7 the hierarchy: domain → subdomain → entries")
+    pt.add_argument("--repo", help="scope to one repo (code axis)")
+    pt.add_argument("--domain", help="drill into one domain → its subdomains → entries")
+    pt.add_argument("--limit", type=int, default=300)
+
+    ps = sub.add_parser("state", help="#8 the living cohered note (current decided state) for a subdomain")
+    ps.add_argument("subdomain", help="the topic subdomain (e.g. Journal_Merge_By_Coordinate)")
+
+    po = sub.add_parser("outstanding", help="#9 the SOPHIA-confirmed reconcilable backlog (sophia_checked threads)")
+    po.add_argument("--limit", type=int, default=60)
+
+    pconv = sub.add_parser("conversation",
+                           help="the WHOLE conversation's journals in ONE query, COMPLETE, NO FILTER "
+                                "(N=0 latest, N=1 prior, … keyed on convo_start markers)")
+    pconv.add_argument("n", type=int, nargs="?", default=0,
+                       help="which conversation back (0 = latest/current, 1 = the one before, …)")
+
     a = p.parse_args(argv[1:])
-    {"locate": cmd_locate, "vision": cmd_vision, "cross": cmd_cross, "network": cmd_network}[a.cmd](a)
+    {"locate": cmd_locate, "vision": cmd_vision, "cross": cmd_cross,
+     "network": cmd_network, "tree": cmd_tree, "state": cmd_state,
+     "outstanding": cmd_outstanding, "conversation": cmd_conversation}[a.cmd](a)
     return 0
 
 

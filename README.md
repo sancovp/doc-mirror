@@ -2,9 +2,11 @@
 
 <!-- SCALABLE-PUBLISHING:AUTOGEN START (managed block — do not edit between these markers) -->
 
-![Stars](https://img.shields.io/github/stars/sancovp/doc-mirror.svg?style=social) ![Updated](https://img.shields.io/badge/updated-2026_07_06-lightgrey.svg)
+![Stars](https://img.shields.io/github/stars/sancovp/doc-mirror.svg?style=social) ![Updated](https://img.shields.io/badge/updated-2026_07_07-lightgrey.svg)
 
-⭐ 0 stars • 🕑 Updated 2026-07-06
+⭐ 0 stars • 🕑 Updated 2026-07-07
+
+[Marketplace](https://github.com/sancovp/sancrev-marketplace) • [Docs](https://sancovp.github.io/aisaac/)
 
 📦 Auto-published from the monorepo • [CHANGELOG](./CHANGELOG.md) • [sancovp/doc-mirror](https://github.com/sancovp/doc-mirror)
 

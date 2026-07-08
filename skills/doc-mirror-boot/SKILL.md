@@ -1,6 +1,6 @@
 ---
 name: doc-mirror-boot
-description: "WHAT: the entry point for a doc-mirror working session — primes you with the CORE LOOP (the resident attention chain that shapes every turn), explains the doc-mirror STATE MACHINE (a cursor + state-skills + a transition hook), and routes you to the state your cursor names. BOOTS THE SESSION (the first thing every start/compact) — it does NOT mirror a codebase (that is doc-mirror-init). WHEN: at the START of any doc-mirror session, after a compact/restart, when the transition hook tells you to 'use the doc-mirror-boot skill', or when the user mentions doc-mirror, documenting/understanding/mirroring a codebase, or asks how the system/compiler/state-machine works (any of)."
+description: "WHAT: doc-mirror-boot — the MANDATORY first action of EVERY turn in this container. It primes the CORE LOOP, explains the doc-mirror STATE MACHINE (cursor + state-skills + transition hook), and routes you to the state your cursor names. You are ALWAYS inside this machine; no reading, querying, editing, answering, planning, or dispatching is valid until you have booted this session. WHEN: ALWAYS — UNCONDITIONALLY, BEFORE ANY OTHER ACTION. If `doc-mirror-boot` is not ALREADY in your context this session, you MUST use it NOW, first, before you do anything else — at the very start of every session, immediately after every compact/restart, and the instant you are about to do work (read, grep, query CartON, edit, answer the user, dispatch an agent, rehydrate) without having booted. Also when the transition hook says 'use the doc-mirror-boot skill', when you are unsure what state you are in, when you catch yourself freestyling/ad-hoc-querying/ad-hoc-reading, or when the user mentions doc-mirror, the cursor, the state machine, rehydrating, memory, or what to work on. If in doubt: BOOT. Never act before booting. This is not topical — it fires on EVERYTHING."
 ---
 
 # doc-mirror-boot — START HERE, every session
@@ -114,8 +114,16 @@ you're reading the right skill now.
 ## CoR (doc-mirror-boot's own binding — the priming, then the route)
 
 Now that I've read `doc-mirror-boot`, I am PRIMED with the core loop, and I will ORIENT —
-read `SYSTEM.md` + the ROOT `progress-tracker` (which names the active repo) + that repo's context, then
-run `docmirror-cursor show` to read my **phase**. I call the state-skill for that phase (per the table)
+read `SYSTEM.md` (the 4 diagrams), run `docmirror-cursor show` to read my **phase**, and then
+**RECURSIVELY REHYDRATE via `doc-mirror-memory-net` (DMN) — this is MANDATORY and is NOT a single
+`locate`**: I identify what I am working on, then call DMN OVER AND OVER (`tree` → drill the domain →
+`#3` by subdomain/tag → `#6` neighborhood), retrieving the **ENTIRE set of entries about it in FULL TEXT
+(read the overflow file)** and following `related_to`/`part_of` to adjacent coordinates, **until the
+entries STOP being about my thing** — proving to myself I have contextualized EVERYTHING (a vision = the
+recursive grouping of everything ever said about that feature; the decisions are already made and I make
+the vision REFLECT them) BEFORE I act. A thin peek + freestyling is the failure that destroys work.
+I NEVER `ls`/`cat` the flat `docs/vision/` files — the graph IS the hierarchy; the ROOT `progress-tracker`
+names the active repo. I call the state-skill for that phase (per the table)
 and follow its CoR; if the cursor is empty I SELECT the state whose WHEN matches the situation and set the
 phase first. I emit a CoR each turn that USES the core-loop priming. I act ONLY on the named state's leg;
 I advance the cursor and `journal` as I go; on an unresolvable fork I `journal -t OPEN` and `docmirror-sleep`.
