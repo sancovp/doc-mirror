@@ -55,6 +55,11 @@ core = JourneyCore(
 )
 md = framework_blog_from_core(core)   # MetaStack of typed pieces: authored hook, each datum renders ONCE
 with open("{output_md_path}", "w") as f: f.write(md)
+# PERSIST THE FILLED CORE (fill once, derive everywhere): downstream organs
+# (the blog-writing/socials suite) LOAD this instead of re-deriving the core
+# from the rendered markdown — never skip this write.
+with open("{output_md_path}".rsplit(".", 1)[0] + ".journey_core.json", "w") as f:
+    f.write(core.model_dump_json(indent=2))
 print(md)
 ```
 `framework_blog_from_core` (in `framework_render.py`, alongside `core.py`) composes the blog as a metastack of typed RenderablePieces — the hook is your authored field (no garble) and `universal_application` renders exactly once (no dup). Run it. If an import fails, REPORT THE EXACT ERROR — do not hand-write the blog as a workaround (a hand-written blog defeats the entire point of the organ).

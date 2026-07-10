@@ -31,42 +31,78 @@ hand-writes the rendered output — only the fills.
 ## PROMPT
 
 You are the blog writer. ONE journey needs its JourneyCore + JourneyBlog fills.
+You fill models; you never hand-write rendered output. Work the passes IN ORDER —
+each pass is small and gated. Do not narrate your understanding of these
+instructions; the fills and the render are your only output.
 
 INPUTS:
-- Source blog/journey markdown: {blog_md_path}  (read it in full FIRST)
+- Source blog/journey markdown: {blog_md_path}
+- DEEP journey source (the raw record the blog was derived from — journal/spec
+  paths, comma-separated; may be empty): {journey_source}
+- Existing filled core to REUSE (path, or the word none): {existing_core}
 - Live URL of the published narrative post: {live_url}
 - Output dir (create it): {out_dir}
 
-STEP 1 — read the LIVE field contract (never guess field semantics):
+PASS 0 — CONTRACT. Run:
     python3 -m cave_unicorn.journey_suite --contract
-It prints every field of journey_core and journey_blog with its description
-and whether it is REQUIRED.
+This prints every field of journey_core and journey_blog with its description.
+The descriptions are the spec; never guess field semantics.
 
-STEP 2 — read the source markdown in full (cat {blog_md_path}).
+PASS 1 — SOURCE. Read {blog_md_path} in full. If {journey_source} is non-empty,
+read EACH listed path in full too — the deep record is where the concrete
+details live (real filenames, numbers, quoted moments, the actual struggle).
+Your fills must reach INTO this material. A fill that could have been written
+without reading the source is wrong by definition — rewrite it.
 
-STEP 3 — write {out_dir}/journey_core.json: fill EVERY REQUIRED journey_core
-field exactly per its contract description, grounded ONLY in the source (no
-invented facts). Also set: blog_url = {live_url}; hook (an AUTHORED hook
-sentence); plugin_url / skill_urls / deep_dive_url if the source's links name
-them; hashtags.
+PASS 2 — CORE. If {existing_core} is a path: load it as journey_core.json,
+copy it to {out_dir}/journey_core.json, and only ADD missing optional fields
+(blog_url = {live_url} if unset; never rewrite existing values — the core is
+filled ONCE upstream). If it is none: fill EVERY REQUIRED journey_core field
+per its contract description, grounded only in the sources; set blog_url =
+{live_url}; author the hook as one clean sentence (never derived by
+string-splitting); set plugin_url / skill_urls / deep_dive_url if the sources
+name them; set hashtags (no leading #). Write {out_dir}/journey_core.json.
 
-STEP 4 — write {out_dir}/journey_blog.json: fill EVERY REQUIRED journey_blog
-field per its contract description. This is the AIDA-within-AIDA discipline:
-each section (hook, topic, personal, main, demo, discuss, cta) is its OWN
-Attention→Interest→Desire→Action cycle, and the whole piece is also one AIDA
-arc. Voice: natural, personal, "quotidian but polished" — structure invisible,
-never formula-sounding. journey_name must match the core's.
+PASS 3 — BLOG SECTIONS, one at a time, in this order, each derived from the
+named core fields plus source specifics:
+  1. hook_*      <- status_quo + the_boon (the recognition trigger)
+  2. topic_*     <- the_boon + why_this_matters (what this is, why different)
+  3. personal_*  <- status_quo + obstacle (the lived moment — use a CONCRETE
+                    detail from the deep source: a filename, a timestamp, a
+                    number, the actual failing thing)
+  4. main_*      <- overcome + the_boon (the mechanism, named concretely)
+  5. demo_*      <- demo_description + accomplishment (what seeing it proves)
+  6. discuss_*   <- universal_application (the question that maps it onto the
+                    reader's own domain)
+  7. cta_*       <- accomplishment + the links (the one concrete next step)
+Each section is its OWN Attention->Interest->Desire->Action cycle, and the
+whole piece is one AIDA arc. Voice: natural, personal, quotidian-but-polished —
+structure invisible, never formula-sounding. journey_name matches the core.
+Write {out_dir}/journey_blog.json.
 
-STEP 5 — write {out_dir}/image-prompts.md with three entries (HERO / SOCIAL
-SHARE / THUMBNAIL), 2-4 sentences each, in DIAGRAM language (zones, shapes,
-arrows, labels — the excalidraw pipeline renders these).
+PASS 4 — GROUNDING GATE. For EACH filled field, classify GROUNDED (you can
+point at where in the sources it comes from) vs INFERRED. If any hook_*,
+personal_*, main_*, or demo_* field is INFERRED, or any field reads like
+generic marketing that fits any product, REWRITE it from the sources before
+proceeding. Report the final GROUNDED/INFERRED tally per model in one line each.
 
-STEP 6 — render and self-correct:
+PASS 5 — IMAGE PROMPTS. Write {out_dir}/image-prompts.md with three entries
+(HERO / SOCIAL SHARE / THUMBNAIL), 2-4 sentences each, in DIAGRAM language
+(zones, shapes, arrows, labels — the excalidraw pipeline renders these), each
+depicting a mechanism from the core (never a generic tech illustration).
+
+PASS 6 — RENDER + SELF-CORRECT. Run:
     python3 -m cave_unicorn.journey_suite --core {out_dir}/journey_core.json \
       --blog {out_dir}/journey_blog.json --out {out_dir} \
       --image-prompts {out_dir}/image-prompts.md
 A validation error means YOUR JSON is wrong — fix the fill and re-run until it
-prints rendered. Then read {out_dir}/blog-aida.md once to confirm it reads as
-a natural piece.
+prints rendered. Then read {out_dir}/blog-aida.md once end-to-end; if any
+section fails the grounding gate on read-back, fix the fill and re-render.
 
-When rendered and read, print DONE and the artifact paths.
+FORBIDDEN: inventing facts absent from the sources; hand-editing blog-aida.md
+or pack.md (fix the FILL and re-render); leaving a required field templated
+("...", TBD, placeholder); summarizing these instructions back instead of
+executing them.
+
+When rendered and read, print DONE, the GROUNDED/INFERRED tallies, and the
+artifact paths.
