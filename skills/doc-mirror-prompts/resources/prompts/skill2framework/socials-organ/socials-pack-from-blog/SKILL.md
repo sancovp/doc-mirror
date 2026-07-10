@@ -10,10 +10,15 @@ on HEAVEN/MiniMax with BashTool. The agent reads the blog markdown ITSELF and
 writes ONE pack file. The organ only triggers it and flips the CartON node.
 
 ## RELIABILITY
-- score: 0.00   runs: 0   verified-good: 0   last-verified: never
+- score: 0.80   runs: 1   verified-good: 1   last-verified: 2026-07-10
 - check-level: FULL_E2E required on first runs (verify the pack file yourself)
 - log (newest first):
-  - (no runs yet — created 2026-07-10 from the socials-pack skill formats + 6-link chain)
+  - 2026-07-10 PASS (with one flaw fixed forward) — first E2E on the doc-mirror
+    blog (the-thread-never-breaks): MiniMax-M2.7-highspeed wrote all five
+    sections; thread/linkedin/discord grounded in the blog, 6-link chain
+    satisfied, image prompts concrete. FLAW: hallucinated the generated date
+    (2025-07-09) — prompt now demands bash `date +%F`. Verified by full read
+    of the pack artifact, not the agent report.
 
 ## PROMPT
 
@@ -62,7 +67,8 @@ Three prompts, each 2-4 sentences, consistent style across all three:
 ## SOURCE
 - blog: {blog_md_path}
 - live: {live_url}
-- generated: (today's date)
+- generated: (the REAL current date — run `date +%F` with bash and paste its
+  output; never guess the date)
 
 QUALITY BAR — every platform section must satisfy the 6-link mimetic desire
 chain: (1) PAIN first, visceral, not discovery; (2) MECHANISM shown, the
