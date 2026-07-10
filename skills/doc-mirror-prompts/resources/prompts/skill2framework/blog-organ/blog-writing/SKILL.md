@@ -11,12 +11,22 @@ blog-aida.md + pack.md (from_core socials) deterministically. The agent never
 hand-writes the rendered output — only the fills.
 
 ## RELIABILITY
-- score: 0.00   runs: 0   verified-good: 0   last-verified: never
+- score: 0.90   runs: 1   verified-good: 1   last-verified: 2026-07-10
 - check-level: FULL_E2E required on first runs (read blog-aida.md + pack.md yourself)
 - log (newest first):
-  - (no runs yet — created 2026-07-10 per Isaac: "give the agents the right
-    instructions. and once you get the right output, make that a skill... thats
-    the blog writing skill... then give it to that agent")
+  - 2026-07-10 PASS — first E2E on the doc-mirror journey: MiniMax filled all
+    21 core + 31 blog fields against the live contract; blog-aida.md read in
+    full = publishable (each section a real AIDA cycle, voice natural, zero
+    invented facts); pack.md from_core renders correct AFTER two LEGACY
+    RENDERER bugs the run exposed were fixed in the fork's renderers.py
+    (LinkedIn hook interpolated a Python list repr — now uses the core's
+    AUTHORED hook per core.py's own doctrine; '#'-carrying hashtag fills
+    double-marked — now lstrip'd). The deterministic re-render needed NO agent
+    re-run — the two-phase design's payoff. Verified by full artifact reads,
+    not the agent report.
+  - (created 2026-07-10 per Isaac: "give the agents the right instructions.
+    and once you get the right output, make that a skill... thats the blog
+    writing skill... then give it to that agent")
 
 ## PROMPT
 
