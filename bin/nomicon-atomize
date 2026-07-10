@@ -2,6 +2,17 @@
 """
 nomicon-atomize — project a nomicon's held frameworks OUT into a flat skills/ dir.
 
+VOCABULARY + SUCCESSION NOTE (2026-07-10, the SkillTome naming)
+---------------------------------------------------------------
+"nomicon" is the LEGACY name: the per-AIOS book is now a SkillVolume and the author's
+overall corpus is the SkillTome (research/ssri/SKILLTOME-GEOMETRY.md §0). The CANONICAL
+flat projection op is now `skilltree project <tree> <target> --policy flat` (agent-skilltree
+>=0.3.0, skilltree.forest.project — it ports THIS script's semantics: table rows + holder,
+relative symlinks, self-clobber guards, and reads the same `## Frameworks` table, which
+skilltree now GENERATES from the tree manifest). This script remains for nomicon SKILL.md
+files that are not skilltree-materialized; it keeps its filename until the coupled
+promptworld/nomicon references are renamed as one unit (see the task-14 journal).
+
 WHAT IT DOES
 ------------
 A *nomicon* (an author-nomicon SKILL.md) holds an organized set of {aios}-nomicon
