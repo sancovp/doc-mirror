@@ -10,10 +10,15 @@ Dispatched by `cave_unicorn.images.fire_socials_images` via `claude -p`
 images with the excalidraw render pipeline and VERIFIES each PNG by reading it.
 
 ## RELIABILITY
-- score: 0.00   runs: 0   verified-good: 0   last-verified: never
+- score: 0.90   runs: 1   verified-good: 1   last-verified: 2026-07-10
 - check-level: FULL_E2E required on first runs (open the PNGs yourself)
 - log (newest first):
-  - (no runs yet — created 2026-07-10 on the excalidraw-renderer agent's rules)
+  - 2026-07-10 PASS — first E2E on the doc-mirror pack: all three PNGs rendered
+    and VERIFIED BY HUMAN-SIDE VISUAL READ (not the agent's claim): hero = rich
+    before/after diagram with the thread weaving through the compaction seam;
+    social-share = "THE DOCS WERE LYING." split with overlay space; thumbnail =
+    high-contrast title + site URL. Dispatch gotcha fixed in module: claude -p
+    needs ANTHROPIC_* env stripped or a sourced provider key shadows the login.
 
 ## PROMPT
 
