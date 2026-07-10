@@ -11,9 +11,18 @@ blog-aida.md + pack.md (from_core socials) deterministically. The agent never
 hand-writes the rendered output — only the fills.
 
 ## RELIABILITY
-- score: 0.90   runs: 1   verified-good: 1   last-verified: 2026-07-10
+- score: 0.95   runs: 2   verified-good: 2   last-verified: 2026-07-10
 - check-level: FULL_E2E required on first runs (read blog-aida.md + pack.md yourself)
 - log (newest first):
+  - 2026-07-10 PASS (run 2 — the MPE-hardened prompt + deep-source pipe): the
+    fill provably REACHED into the deep record — blog-aida.md names the four
+    enforcement layers, the two-hooks-twelve-rules environment strip,
+    docmirror-init, the updated-vs-last_journal cursor split, and the
+    written-by-the-dominant-activity actuator doctrine, ALL absent from the
+    source blog (they live in SYSTEM.md + the June journal). Verified by full
+    read. NITS for run 3: some em-dash punctuation dropped in JSON fills; the
+    GROUNDED/INFERRED tally line was cut from the captured output (capture
+    full stdout next dispatch, not a tail window).
   - 2026-07-10 PASS — first E2E on the doc-mirror journey: MiniMax filled all
     21 core + 31 blog fields against the live contract; blog-aida.md read in
     full = publishable (each section a real AIDA cycle, voice natural, zero
