@@ -11,7 +11,18 @@ blog-aida.md + pack.md (from_core socials) deterministically. The agent never
 hand-writes the rendered output — only the fills.
 
 ## RELIABILITY
-- score: 0.95   runs: 2   verified-good: 2   last-verified: 2026-07-10
+- score: 0.50   runs: 2   verified-good: 2-by-agent-read, 0-by-user-gate   last-verified: 2026-07-10
+- log (USER GATE, newest — the real gate): 2026-07-10 Isaac REJECTED both runs'
+  outputs against the format bar, verbatim: "neither of these look like
+  JourneyBlog AIDA fractals -- i dont see the links from the framework and the
+  journeycore isnt really present correctly, the stories are not ABOUT the
+  literal fucking stuff that happened to me/us... it needs to be
+  ARCHIVAL/ARCHAEOLOGICAL -- LOOK AT WHAT FUCKING HAPPENED TO ME AND FUCKING DO
+  YOU WANT TO DO THIS YOURSELF!? thats the whole idea." Three defects: framework
+  links absent from the render; the core not correctly present; stories generic
+  instead of ARCHIVAL. The ARCHIVAL LAW + links requirement are now in the
+  prompt (below); renderer-level links section is a merge-time item. My own
+  verified-good reads measured grounding, not HIS bar — the user gate outranks.
 - check-level: FULL_E2E required on first runs (read blog-aida.md + pack.md yourself)
 - log (newest first):
   - 2026-07-10 PASS (run 2 — the MPE-hardened prompt + deep-source pipe): the
@@ -87,6 +98,19 @@ named core fields plus source specifics:
 Each section is its OWN Attention->Interest->Desire->Action cycle, and the
 whole piece is one AIDA arc. Voice: natural, personal, quotidian-but-polished —
 structure invisible, never formula-sounding. journey_name matches the core.
+
+THE ARCHIVAL LAW (Isaac, verbatim — this is the whole idea): the story must be
+ARCHIVAL/ARCHAEOLOGICAL — "LOOK AT WHAT FUCKING HAPPENED TO ME AND FUCKING DO
+YOU WANT TO DO THIS YOURSELF!?" The sections are ABOUT the literal documented
+events from the deep source: real dates, real filenames, real error messages,
+the actual moment it broke and the actual moment it worked — receipts, not a
+story ABOUT the kind of thing that happened. If a paragraph could describe
+someone else's project, it is not archival — rewrite it from the record. The
+JourneyCore must be PRESENT in the piece: the reader should be able to point at
+where status_quo, obstacle, overcome, accomplishment, the_boon each literally
+appear. The cta_* and demo_* sections MUST carry the ACTUAL LINKS from the core
+(plugin_url, deep_dive_url, skill_urls, blog_url) written into the text — a
+JourneyBlog with no framework links is invalid.
 Write {out_dir}/journey_blog.json.
 
 PASS 4 — GROUNDING GATE. For EACH filled field, classify GROUNDED (you can
