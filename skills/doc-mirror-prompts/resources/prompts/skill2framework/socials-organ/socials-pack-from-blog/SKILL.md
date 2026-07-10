@@ -10,6 +10,11 @@ on HEAVEN/MiniMax with BashTool. The agent reads the blog markdown ITSELF and
 writes ONE pack file. The organ only triggers it and flips the CartON node.
 
 ## RELIABILITY
+- **SUPERSEDED 2026-07-10** by `skill2framework/blog-organ/blog-writing` (Isaac:
+  the posts must DERIVE from the filled JourneyCore via the from_core renderers,
+  not be freestyled from the blog md — this skill freestyled). The unicorn
+  socials organ now points at blog-writing; keep this file as the record of the
+  freestyle lane's one verified run.
 - score: 0.80   runs: 1   verified-good: 1   last-verified: 2026-07-10
 - check-level: FULL_E2E required on first runs (verify the pack file yourself)
 - log (newest first):
