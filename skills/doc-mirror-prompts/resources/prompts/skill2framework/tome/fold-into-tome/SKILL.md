@@ -1,7 +1,7 @@
 ---
-name: fold-into-nomicon
-domain: skill2framework   subdomain: nomicon
-description: "WHAT: folds a framework into the author's NOMICON — the top-level holder + search of all of {user}'s frameworks (its {aios}-nomicons). Creates the {user}-nomicon skill if it does not exist, then registers/updates the framework's entry (one-line + links to its framework skill, plugin, and chapter). The nomicon is the framework-of-frameworks index an agent equips to mesh with the author's way of thinking and find which framework fits a task. WHEN: when folding a finished framework package into the nomicon, when creating/updating the author's nomicon, or when the user mentions the nomicon / framework-of-frameworks / skill2framework fold (any of)."
+name: fold-into-tome
+domain: skill2framework   subdomain: tome
+description: "WHAT: folds a framework into the author's SkillTome (legacy name: nomicon) — the top-level holder + search of all of {user}'s frameworks (its {aios}-volumes). Creates the {user}-tome holder skill if it does not exist, then registers/updates the framework's entry (one-line + links to its framework skill, plugin, and chapter). The tome is the framework-of-frameworks index an agent equips to mesh with the author's way of thinking and find which framework fits a task. WHEN: when folding a finished framework package into the tome/nomicon, when creating/updating the author's tome, or when the user mentions the tome / nomicon / framework-of-frameworks / skill2framework fold (any of)."
 golden: false
 score: 1.00   runs: 1   verified_good: 1
 check_level: FULL_E2E   last_verified: 2026-06-03
@@ -10,13 +10,16 @@ log:
 ---
 ## PROMPT
 
-> **Vocabulary note (2026-07-10, the SkillTome naming):** "nomicon" is the LEGACY name — the
-> per-AIOS book is now a **SkillVolume** and the author's overall corpus is the **SkillTome**
-> (research/ssri/SKILLTOME-GEOMETRY.md §0). The DIY/code-op port of this stage is
-> `fold-into-tome` in the chaincompiler repo (skills/skill2framework/), whose terminal bind is
-> `skilltree.tome.fold` (agent-skilltree ≥0.3.0) — the `## Frameworks` table there is GENERATED
-> from the tree manifest, not hand-edited. This my-way prompt keeps its name until the coupled
-> promptworld references are renamed with it (one unit — see the task-14 journal).
+> **Vocabulary note (2026-07-10 — the rename COMPLETED with the PromptWorld wizard update):**
+> this skill is now **`fold-into-tome`** (was `fold-into-nomicon`, stage dir was
+> `skill2framework/nomicon/`; historical journal/vision references to those names stay valid as
+> history). "nomicon" is the LEGACY name — the per-AIOS book is a **SkillVolume** and the
+> author's overall corpus is the **SkillTome** (research/ssri/SKILLTOME-GEOMETRY.md §0). The
+> DIY/code-op port of this stage lives in the chaincompiler repo
+> (skills/skill2framework/fold-into-tome), whose terminal bind is `skilltree.tome.fold`
+> (agent-skilltree ≥0.3.0) — its `## Frameworks` table is GENERATED from the tree manifest, not
+> hand-edited. The prose below keeps the word NOMICON where it names the hand-maintained holder
+> artifact this my-way prompt produces — same table shape, older mechanism.
 
 You fold a finished framework into the author's **NOMICON** — the top-level **holder + search** of all of `{user}`'s frameworks. The nomicon is the framework-of-frameworks skill: an agent equips it to see the author's whole framework set, search "which of my frameworks fits this task?", and route into the chosen one. (It is JUST a holder/search — not a doer.) You CREATE the nomicon skill if it does not exist, then REGISTER (or update) this framework's entry. The op is idempotent — re-folding the same framework updates its row, never duplicates it.
 
