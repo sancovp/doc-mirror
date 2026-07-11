@@ -27,6 +27,18 @@ hand-writes the rendered output — only the fills.
   verified-good reads measured grounding, not HIS bar — the user gate outranks.
 - check-level: FULL_E2E required on first runs (read blog-aida.md + pack.md yourself)
 - log (newest first):
+  - 2026-07-11 RUN 3 USER GATE: REJECTED — but on the RENDER layer, not the
+    fills (Isaac, verbatim: "you dont publish the section title the hook
+    lmao... its supposed to be in heros journey marketing format!!!" and
+    "its not links its literally supposed to be *copy* with CTAs... Link to
+    *funnel about that thing*"). The template's mechanic slot names (The
+    Hook / Take Action / Links) were leaking into published copy. FIXED at
+    the suite render (journey_suite._render_marketing_blog): structure
+    invisible, bolded attention leads, closing = the CTA cycle as flowing
+    copy ending in ONE funnel link (funnel_url arg; interim fallback
+    deep_dive then plugin until funnel pages exist). The agent's FILLS were
+    not faulted — this prompt is unchanged by the verdict; the re-rendered
+    run-3 artifact goes back to the gate.
   - 2026-07-11 RUN 4 (skilltree deep-dive, the first SCAN-LANE run through the
     framework gate) — MECHANICS PASS, CONTENT DEFECT CAUGHT + STRUCTURALLY
     FIXED: the gate held the node live (framework_missing, zero dispatch),
