@@ -67,5 +67,12 @@ Write the markdown to `{output_md_path}`. Return as your final message: the full
 - Mechanics ONLY from the impl docs (what IS). No vision, no invented features, no guessed internals.
 - Reproduce diagrams verbatim from the impl docs (generalizing container paths per the redaction law); don't fabricate new ones.
 - WRITE EARLY: after reading the impl docs, write `{output_md_path}` BEFORE composing your report — never spend the whole tool budget reading and die announcing "let me write".
-- NEVER call a block-report/halt tool as a status note — it HALTS the run. Use it only for a real blocker (a listed impl doc missing).
 - Touch ONLY `{output_md_path}`. Read nothing under `/home/GOD/core`.
+
+NEVER CALL A BLOCK-REPORT / HALT TOOL AS A STATUS REPORT. If your loadout
+carries WriteBlockReportTool (or any blocked/halt tool): calling it HALTS the
+run permanently — it is NOT a progress note. "No blocker — all impl docs read,
+ready to write" is NEVER a block report (a run died EXACTLY this way): when
+you are ready to write, the next action is WRITING `{output_md_path}` with
+your Bash tool. Use the block tool ONLY when a real external blocker makes
+every remaining step impossible (a listed impl doc missing from disk).
