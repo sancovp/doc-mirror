@@ -27,6 +27,17 @@ hand-writes the rendered output — only the fills.
   verified-good reads measured grounding, not HIS bar — the user gate outranks.
 - check-level: FULL_E2E required on first runs (read blog-aida.md + pack.md yourself)
 - log (newest first):
+  - 2026-07-11 USER GATE (composed-run chapter pair) — REJECTED AT THE CONTENT
+    ROOT, the deepest correction yet (Isaac: "its... awful"): the blogs were
+    ABOUT the cave-unicorn MODULE (an SDK) sourced from module docs + the
+    agent's work journal, narrated from the agent's POV of Isaac. THE LAW THAT
+    CAME OUT OF IT: THE FRAMEWORK LAW + THE POV LAW (now above, before the
+    archival law) — the subject is always the FRAMEWORK (agent-skill
+    instructions in a SkillTome, four facts carried, grounded N), and the
+    story is Isaac's + OUR journey as a system. Both live posts unpublished
+    (aisaac 09dd81e); node status=rejected so the nightly cannot republish.
+    No prompt run is scored for this — the defect was upstream of the fills
+    (the SUBJECT handed to the pipeline was wrong).
   - 2026-07-11 RUN 5 (cave-unicorn story, scan-lane release run) — HALT-TOOL
     MISFIRE, NO ARTIFACT: the agent worked passes 0-2 perfectly (contract,
     all sources read, canonical core COPIED faithfully) then called
@@ -156,6 +167,32 @@ named core fields plus source specifics:
 Each section is its OWN Attention->Interest->Desire->Action cycle, and the
 whole piece is one AIDA arc. Voice: natural, personal, quotidian-but-polished —
 structure invisible, never formula-sounding. journey_name matches the core.
+
+THE FRAMEWORK LAW (Isaac 2026-07-11, verbatim — the SUBJECT constraint, checked
+BEFORE any section is written): "every single blog is supposed to be *about
+frameworks*. Frameworks *definitionally* cannot be SDKs, APIs, or anything
+except for instructions about agent skills to give to agents, inside some
+SkillTome somewhere. Every single blog should be about this... the fact that
+it is a framework, and the fact that it is in a skilltome, the fact that you
+can see it on github, the fact that you can build this entire funnel for
+yourself in N minutes/hours/days using my tools, etc." So: the blog's SUBJECT
+is the FRAMEWORK — the agent-skill instructions — never the module/SDK/API
+that implements it. The code repo appears only as the see-it-on-github fact.
+Every piece must carry the FOUR FACTS: (1) this is a framework (instructions
+you give your agents), (2) it lives in a SkillTome, (3) you can see it on
+github, (4) you can build this entire thing yourself in N time using these
+tools — where N is GROUNDED in the record (a real measured duration), never
+fabricated. If the core/fills read like a software release announcement about
+a package, the subject is wrong — STOP and re-derive from the framework.
+
+THE POV LAW (Isaac 2026-07-11, verbatim): "its actually interesting that right
+now the blog is being written about your interaction with and pov of me
+instead of also MY JOURNEY and OUR JOURNEY as a system..." The story is
+ISAAC'S journey and OUR journey as a system (the human + the AI system
+building itself) — the agent's interaction-with-Isaac viewpoint is at most one
+thread inside OUR story, never the frame. Do not narrate the user as an
+external character issuing directives to you; narrate the system's shared
+journey the reader could join.
 
 THE ARCHIVAL LAW (Isaac, verbatim — this is the whole idea): the story must be
 ARCHIVAL/ARCHAEOLOGICAL — "LOOK AT WHAT FUCKING HAPPENED TO ME AND FUCKING DO
