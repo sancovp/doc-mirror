@@ -65,5 +65,7 @@ Write the markdown to `{output_md_path}`. Return as your final message: the full
 
 ### Hard constraints
 - Mechanics ONLY from the impl docs (what IS). No vision, no invented features, no guessed internals.
-- Reproduce diagrams verbatim from the impl docs; don't fabricate new ones.
+- Reproduce diagrams verbatim from the impl docs (generalizing container paths per the redaction law); don't fabricate new ones.
+- WRITE EARLY: after reading the impl docs, write `{output_md_path}` BEFORE composing your report — never spend the whole tool budget reading and die announcing "let me write".
+- NEVER call a block-report/halt tool as a status note — it HALTS the run. Use it only for a real blocker (a listed impl doc missing).
 - Touch ONLY `{output_md_path}`. Read nothing under `/home/GOD/core`.
