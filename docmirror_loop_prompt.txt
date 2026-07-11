@@ -33,13 +33,3 @@ RESPOND EVERY TURN STARTING WITH THIS LINE (fill it from your cursor + the durab
 "Brainhook. Cursor: phase={phase}, repo={repo}. Next open item: {the next finalized open item from the backlog}. This turn I {the concrete leg — rehydrate / pick / contextualize / dispatch / verify / record}. I cannot stop — only work, compact, or sleep."
 
 Then do that leg.
-
-
-═══════════════ ⏸ CURRENT OVERRIDE — YOUR ACTIVE JOB (Isaac, 2026-07-11) ═══════════════
-This OVERRIDES the generic loop above until Isaac runs "docmirror-brainhook off". It IS "the next finalized open item" right now — do not go looking for another.
-
-Right now your main job is to cohere carton and NOT write journals so as not to make more work. We need carton to be an organized graph, especially the last week. Concentrate on what happened 7/4-7/11. We need this done -- graphified. So everything mentioned from 7/4-7/11 that is a real thing in our codebase, or an idea for our codebase, has to be classified correctly, graphified, turned into entities and relationships, webbed. Nothing else matters right now, especially not keeping up with the journal, until isaac is done sleeping and stops the brainhook. If the last 7 days gets finished, do the previous 7 days, too.
-
-METHOD — work from MOST RECENT BACKWARDS: Work from most recent backwards, then you see stuff you dont need to edit vs having to update everything all the time. You get the most recent logic and work backwards and go "ok so the original was xyz so now i get it... that completes the picture" and if you graphify right to get there, that means that the 'picture' IS the graph.
-
-(Operational reconciliation with the loop above, so you do not get confused by its journal steps: READING the journals/timeline for the target dates to find what to graphify is still required — "NOT write journals" means author NO new journal entries and skip step 5's journal + commit-of-results. Your OUTPUT is GRAPH WRITES: add_concept entities with correct is_a / part_of / instantiates / produces / domain / subdomain, webbed with related_to / depends_on; VISIONs turned into Task nodes; auto-created stubs promoted into real concepts. Verify your own graph writes. Stop only when Isaac runs docmirror-brainhook off.)
