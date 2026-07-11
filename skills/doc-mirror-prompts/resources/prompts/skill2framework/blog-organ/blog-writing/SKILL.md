@@ -27,6 +27,19 @@ hand-writes the rendered output — only the fills.
   verified-good reads measured grounding, not HIS bar — the user gate outranks.
 - check-level: FULL_E2E required on first runs (read blog-aida.md + pack.md yourself)
 - log (newest first):
+  - 2026-07-11 RUN 4 (skilltree deep-dive, the first SCAN-LANE run through the
+    framework gate) — MECHANICS PASS, CONTENT DEFECT CAUGHT + STRUCTURALLY
+    FIXED: the gate held the node live (framework_missing, zero dispatch),
+    released on core-wiring, packed, flipped, and cleared the flag — the full
+    hold->release cycle proven on the real graph. BUT the agent RETYPED the
+    existing core from memory instead of copying it, corrupting nine fields
+    (plah/IKZ/sancopv — a broken URL) despite PASS 2's copy-never-rewrite
+    instruction. LESSON: a prompt cannot guarantee byte-fidelity — the module
+    now ENFORCES the canonical core over whatever the agent writes
+    (cave_unicorn.socials._enforce_canonical_core; only sanctioned change =
+    blog_url from live_url when unset; regression-tested). Artifacts repaired
+    by deterministic re-render from canonical. The agent's own-authored blog
+    fills were clean — corruption only where it transcribed.
   - 2026-07-11 RUN 3 (skilltree, the first framework-backed + archival-law +
     voice-law run) — PASSED the full commander checklist, USER GATE PENDING:
     dispatched via cave-unicorn pack-socials direct mode with existing_core =
