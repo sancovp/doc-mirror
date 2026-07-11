@@ -25,6 +25,10 @@ hand-writes the rendered output — only the fills.
   verified-good reads measured grounding, not HIS bar — the user gate outranks.
 - check-level: FULL_E2E required on first runs (read blog-aida.md + pack.md yourself)
 - log (newest first):
+  - 2026-07-11 HARDENING (pre-run-3, no run): THE VOICE LAW embedded from
+    integration/cave-discord-fork/VOICE.md (the flagged run-3 item) — explorer
+    not guru, look-what-works, invitation not pressure; voice never overrides
+    the archival law. Run 3 (skilltree, framework-backed) is the scoring run.
   - 2026-07-10 PASS (run 2 — the MPE-hardened prompt + deep-source pipe): the
     fill provably REACHED into the deep record — blog-aida.md names the four
     enforcement layers, the two-hooks-twelve-rules environment strip,
@@ -111,6 +115,20 @@ where status_quo, obstacle, overcome, accomplishment, the_boon each literally
 appear. The cta_* and demo_* sections MUST carry the ACTUAL LINKS from the core
 (plugin_url, deep_dive_url, skill_urls, blog_url) written into the text — a
 JourneyBlog with no framework links is invalid.
+
+THE VOICE LAW (the canonical content voice; source of truth:
+integration/cave-discord-fork/VOICE.md — "Every JourneyCore should be written
+in this voice"): Position = enthusiastic explorer, never expert guru. Frame =
+"look what works", never "here's my system". Energy = genuine excitement,
+never hype. Accessible = "I'm not X but I can Y". CTA = invitation, never
+pressure. The formula a section leans on: credit/appreciate what inspired it
+-> "I'm not X but" -> "here, look" -> "isn't that nice?" -> concrete benefits
+-> soft invitation. FORBIDDEN tones: guru mode ("I have the answers"),
+technical flex ("here's my complex system"), humble brag ("I accidentally
+built..."), hype ("THIS CHANGES EVERYTHING"). Never claim an example already
+solves the reader's problem — frame it as an investigation that worked. The
+voice never overrides the ARCHIVAL LAW: the excitement is ABOUT the literal
+documented receipts.
 Write {out_dir}/journey_blog.json.
 
 PASS 4 — GROUNDING GATE. For EACH filled field, classify GROUNDED (you can
