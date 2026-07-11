@@ -11,7 +11,9 @@ blog-aida.md + pack.md (from_core socials) deterministically. The agent never
 hand-writes the rendered output — only the fills.
 
 ## RELIABILITY
-- score: 0.50   runs: 2   verified-good: 2-by-agent-read, 0-by-user-gate   last-verified: 2026-07-10
+- score: 0.50   runs: 3   verified-good: 3-by-commander-checklist, 0-by-user-gate   last-verified: 2026-07-11
+- (score moves only on the USER GATE — run 3 passed the full commander
+  checklist below and is AWAITING Isaac's read; bump on his pass.)
 - log (USER GATE, newest — the real gate): 2026-07-10 Isaac REJECTED both runs'
   outputs against the format bar, verbatim: "neither of these look like
   JourneyBlog AIDA fractals -- i dont see the links from the framework and the
@@ -25,6 +27,23 @@ hand-writes the rendered output — only the fills.
   verified-good reads measured grounding, not HIS bar — the user gate outranks.
 - check-level: FULL_E2E required on first runs (read blog-aida.md + pack.md yourself)
 - log (newest first):
+  - 2026-07-11 RUN 3 (skilltree, the first framework-backed + archival-law +
+    voice-law run) — PASSED the full commander checklist, USER GATE PENDING:
+    dispatched via cave-unicorn pack-socials direct mode with existing_core =
+    chapters/skilltree/chapter/blog1.journey_core.json (core REUSED INTACT —
+    zero fields changed, fill-once held) and 5 deep sources; journey_blog
+    GROUNDED 28/28 (tally found in the heaven history, NOT process stdout —
+    the run-2 capture nit was aimed at the wrong stream); the marker-skill
+    verification claim spot-checked verbatim against
+    research/ssri/ship/skilltree-paper.md line 61; cta_* carries all four real
+    URLs in prose + the new rendered Links section present; ONE checklist
+    fail found+fixed: demo_action said Links below instead of carrying a URL —
+    fill patched (plugin + code URLs), deterministic re-render, no agent
+    re-run (the two-phase payoff again). Voice law satisfied on read
+    (Im-not-a-platform-engineer move, went-through-it-so-you-dont-have-to,
+    genuine questions as CTA; no guru/hype). KNOWN renderer nits (merge-time,
+    NOT fill defects): TwitterPostSet.from_core hook_tweet = whole boon (way
+    over tweet length); reply truncates accomplishment mid-word at 100 chars.
   - 2026-07-11 HARDENING (pre-run-3, no run): THE VOICE LAW embedded from
     integration/cave-discord-fork/VOICE.md (the flagged run-3 item) — explorer
     not guru, look-what-works, invitation not pressure; voice never overrides
