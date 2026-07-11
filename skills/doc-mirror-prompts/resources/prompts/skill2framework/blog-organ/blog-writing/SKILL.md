@@ -27,7 +27,17 @@ hand-writes the rendered output — only the fills.
   verified-good reads measured grounding, not HIS bar — the user gate outranks.
 - check-level: FULL_E2E required on first runs (read blog-aida.md + pack.md yourself)
 - log (newest first):
-  - 2026-07-11 RUN 3 USER GATE: REJECTED — but on the RENDER layer, not the
+  - 2026-07-11 RUN 5 (cave-unicorn story, scan-lane release run) — HALT-TOOL
+    MISFIRE, NO ARTIFACT: the agent worked passes 0-2 perfectly (contract,
+    all sources read, canonical core COPIED faithfully) then called
+    WriteBlockReportTool as a STATUS note ("blocked_reason: None — all
+    sources read, no blockers") right before writing journey_blog.json — the
+    block tool HALTS by design, so the run died with zero fills. The module's
+    fill-verification caught the ok-report-no-artifact (socials_pack_error on
+    the node; nightly-retry semantics intact). HARDENED: explicit
+    never-call-a-halt-tool-as-a-status-report law added to FORBIDDEN below.
+    Gate mechanics were all correct (hold pre-wire, release post-wire,
+    dispatch).
     fills (Isaac, verbatim: "you dont publish the section title the hook
     lmao... its supposed to be in heros journey marketing format!!!" and
     "its not links its literally supposed to be *copy* with CTAs... Link to
@@ -198,6 +208,13 @@ FORBIDDEN: inventing facts absent from the sources; hand-editing blog-aida.md
 or pack.md (fix the FILL and re-render); leaving a required field templated
 ("...", TBD, placeholder); summarizing these instructions back instead of
 executing them.
+
+NEVER CALL A BLOCK-REPORT / HALT TOOL AS A STATUS REPORT. If your loadout
+carries WriteBlockReportTool (or any blocked/halt tool): calling it HALTS the
+run permanently — it is NOT a progress note. Use it ONLY when a real external
+blocker makes every remaining pass impossible (a source file missing, the
+render command absent). "No blockers, about to write the fills" is NEVER a
+block report — the next action is simply WRITING the fill files.
 
 When rendered and read, print DONE, the GROUNDED/INFERRED tallies, and the
 artifact paths.
