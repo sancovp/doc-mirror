@@ -3,9 +3,20 @@ name: narrative-blog-from-aios
 domain: skill2framework   subdomain: blog-organ
 description: "WHAT: the BLOG ORGAN — produces THE FIXPOINT POST for a framework (the ONE invariant blog format: OVERVIEW + JOURNEY + FRAMEWORK, explicit hero's-journey structure) by reconstructing the journey from the journal/durable layer, FILLING the JourneyCore model, and rendering deterministically (it never hand-writes the blog markdown). WHEN: when producing the blog post for a framework, when the nightly blog organ fires, or when the user mentions the blog organ, the fixpoint post, skill2framework, or making a framework blog (any of)."
 golden: false
-score: 0.50   runs: 4   verified_good: 2
+score: 0.40   runs: 5   verified_good: 2
 check_level: FULL_E2E   last_verified: 2026-07-11
 log:
+  - "2026-07-12 THREE-POV DIRECTIVE (Isaac verbatim: 'make the agent write
+    all 3 blogs: the system overall TRUE AGENT pov of user (in this case
+    isaac) + agent cohering or not, the agent pov, and user pov') after the
+    operator-POV re-derive died on a triple mechanical failure: the agent
+    REUSED the rejected sibling core JSON (cached wrong answer — now banned:
+    never reuse a sibling journey_core.json), hit the multiline python3 -c
+    bash syntax error (now banned: heredoc-to-file then run), then called
+    the block tool as a recovery note (halt law hardened: a failed bash
+    command is never a blocker). STEP 2 now fills THREE cores (user/agent/
+    system POV) and renders three posts. The stale core was archived
+    (.rejected-agent-pov). Score 0.40 (5 runs, 2 verified-good)."
   - "2026-07-12 OPERATOR-POV LAW after the B5 POV rejection (grade :( —
     Isaac, verbatim: 'this blog is still from the agents POV about doing the
     work. It needs to be a journey from the *users pov from MY POV isaacs
@@ -106,6 +117,34 @@ If only the agent could have experienced it, it is the wrong vantage —
 either recast it as what the operator saw/directed, or move it to the deep
 dive (it is assembly-line detail; the peanuts law's cousin).
 
+THE THREE-POV DIRECTIVE (Isaac 2026-07-12, verbatim, superseding
+single-POV blog1: "we want to just make the agent write all 3 blogs: the
+system overall TRUE AGENT pov of user (in this case isaac) + agent cohering
+or not, the agent pov, and user pov"). You produce THREE fixpoint posts —
+the SAME journey, three vantages, each a complete OVERVIEW+JOURNEY+FRAMEWORK
+fill rendered through render_fixpoint_post:
+1. USER POV (the primary post → `{output_md_path}`): the operator's journey
+   using the system, under THE OPERATOR-POV LAW above. Strictest peanuts law.
+2. AGENT POV (→ sibling `*-agent-pov.md`): the agent's OWN true journey doing
+   the work, honestly voiced AS the agent ("I, the agent building this").
+   Here the real build events ARE the journey content (the grounding, the
+   failures, the fixes) — told as the agent's hero's journey, never
+   pretending to be the human.
+3. SYSTEM POV (→ sibling `*-system-pov.md`): third person, the TRUE story of
+   the user + the agent COHERING OR NOT — the partnership arc: what Isaac
+   directed, what the agent did, where they decohered (rejected runs,
+   corrections) and how they re-cohered. Honesty about the decoherences IS
+   the content.
+ALL LAWS bind all three (belief, dream-first, archival, redaction); the
+peanuts law binds the USER post strictly — in the AGENT post the agent's
+work is the journey itself, not peanuts.
+
+NEVER REUSE A SIBLING journey_core.json: an existing `*.journey_core.json`
+next to the output is a PRIOR RUN'S OUTPUT (possibly a REJECTED one), never
+a source. Re-derive EVERY fill from the journey source under the CURRENT
+laws in this prompt. (A run died exactly this way: it re-rendered a rejected
+core instead of re-filling.)
+
 THE ARCHIVAL LAW: the journey is the LITERAL documented events from the
 journey source — real dates, real filenames, real failures, the actual trials
 and errors. Fabricated timescales, invented quotes, or compressed timelines
@@ -142,32 +181,37 @@ Extract, grounded in the record — each fill written under the BELIEF LAW:
 - `hook` — AUTHORED: one clean opening sentence that installs the first belief.
 - `demo_description`, `hashtags`, links (`github_url`/`plugin_url` = `{plugin_repo_url}`).
 
-### STEP 2 — WRITE + RUN A PYTHON SCRIPT (the fill — the whole mechanism)
+### STEP 2 — WRITE THE FILL SCRIPT TO A FILE, THEN RUN IT
+Write the script to /tmp/fill_fixpoint.py using a quoted heredoc
+(`cat > /tmp/fill_fixpoint.py <<'PYEOF'` ... `PYEOF`), then run
+`python3 /tmp/fill_fixpoint.py`. NEVER use multiline `python3 -c` — it DIES
+with a bash syntax error in this harness (a run was lost exactly this way).
 ```python
 import sys; sys.path.insert(0, "{journeycore_import_path}")
 from core import JourneyCore
 from cave_unicorn.journey_suite import render_fixpoint_post   # THE invariant renderer (pip-installed)
-core = JourneyCore(
-    journey_name="...", domain="{allowed_domain}",
-    hook="...",
-    overview_pain="...", overview_solution="...", overview_dream="...",
-    status_quo="...", debate="...", trials="...", new_view="...",
-    right_way="...", world_of_mastery="...",
-    the_boon="...", framework_statement="...", build_time="...",
-    obstacle="...", overcome="...", accomplishment="...",   # legacy beats — fill honestly, other renders use them
-    demo_description="...",
-    github_url="{plugin_repo_url}", plugin_url="{plugin_repo_url}",
-    # deep_dive_url="...",   # only if the global-fit post link is known now
-    hashtags=[...],
-)
-md = render_fixpoint_post(core)
-with open("{output_md_path}", "w") as f: f.write(md)
-# PERSIST THE FILLED CORE (fill once, derive everywhere) — never skip this write.
-with open("{output_md_path}".rsplit(".", 1)[0] + ".journey_core.json", "w") as f:
-    f.write(core.model_dump_json(indent=2))
-print(md)
+
+shared = dict(domain="{allowed_domain}",
+              github_url="{plugin_repo_url}", plugin_url="{plugin_repo_url}",
+              # deep_dive_url="...",   # only if the global-fit post link is known now
+              )
+common = "journey_name hook overview_pain overview_dream overview_solution status_quo debate trials new_view right_way the_boon world_of_mastery framework_statement build_time obstacle overcome accomplishment demo_description hashtags"
+# Fill ALL of `common` per POV (each a COMPLETE, independently grounded fill):
+user_core   = JourneyCore(journey_name="...", hook="...", overview_pain="...", **shared)  # USER POV — operator law, strict peanuts
+agent_core  = JourneyCore(journey_name="...", hook="...", overview_pain="...", **shared)  # AGENT POV — the agent's own true journey
+system_core = JourneyCore(journey_name="...", hook="...", overview_pain="...", **shared)  # SYSTEM POV — user+agent cohering or not, 3rd person
+out = "{output_md_path}"
+base = out.rsplit(".", 1)[0]
+for core, path in ((user_core, out),
+                   (agent_core, base + "-agent-pov.md"),
+                   (system_core, base + "-system-pov.md")):
+    md = render_fixpoint_post(core)
+    open(path, "w").write(md)
+    # PERSIST each FILLED CORE (fill once, derive everywhere) — never skip.
+    open(path.rsplit(".", 1)[0] + ".journey_core.json", "w").write(core.model_dump_json(indent=2))
+    print("wrote", path)
 ```
-`render_fixpoint_post` raises listing any missing fixpoint field — fill the field from the record and re-run; never work around it. If an import fails, REPORT THE EXACT ERROR — do not hand-write the blog.
+`render_fixpoint_post` raises listing any missing fixpoint field — fill the field from the record and re-run; never work around it. If an import fails, REPORT THE EXACT ERROR — do not hand-write the blog. A FAILED BASH COMMAND IS NOT A BLOCKER: fix the command and run it again.
 
 ### STEP 3 — REPORT (return this as your final message)
 1. The exact path written + the FULL rendered markdown.
@@ -183,5 +227,9 @@ print(md)
 NEVER CALL A BLOCK-REPORT / HALT TOOL AS A STATUS REPORT. Calling it HALTS the
 run permanently — it is NOT a progress note. "No blocker — sources read, ready
 to write" is NEVER a block report (a run died EXACTLY this way): when you are
-ready to write, the next action is WRITING the fill script. Use the block tool
-ONLY when a real external blocker makes every remaining step impossible.
+ready to write, the next action is WRITING the fill script. A FAILED BASH
+COMMAND IS ALSO NEVER A BLOCKER — another run died calling the block tool
+right after a bash syntax error with the reason "writing to file and executing
+instead": that is a PLAN, so DO IT (write the file, run it) — do not report
+it. Use the block tool ONLY when a real external blocker makes every remaining
+step impossible (a listed source file missing from disk).
