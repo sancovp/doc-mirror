@@ -3,9 +3,20 @@ name: narrative-blog-from-aios
 domain: skill2framework   subdomain: blog-organ
 description: "WHAT: the BLOG ORGAN — produces THE FIXPOINT POST for a framework (the ONE invariant blog format: OVERVIEW + JOURNEY + FRAMEWORK, explicit hero's-journey structure) by reconstructing the journey from the journal/durable layer, FILLING the JourneyCore model, and rendering deterministically (it never hand-writes the blog markdown). WHEN: when producing the blog post for a framework, when the nightly blog organ fires, or when the user mentions the blog organ, the fixpoint post, skill2framework, or making a framework blog (any of)."
 golden: false
-score: 0.40   runs: 5   verified_good: 2
+score: 0.33   runs: 6   verified_good: 2
 check_level: FULL_E2E   last_verified: 2026-07-11
 log:
+  - "2026-07-12 THE REGISTERS + EVERYTHING-IS-COPY (Isaac, verbatim, grading
+    the 3-POV triple): user POV was still too competent/informed — the real
+    register is the amazed operator who DID NOT READ THE CHATS ('holy
+    fucking shit can you believe my fucking AI is just hooking this stuff up
+    for me THIS WAY while i fucking talk to it wtf' / 'i didnt read the
+    chats. i dont know. i dont care.'); agent POV = ARCHITECT WITH DIAGRAMS
+    (not captains-log); third post = TRUE-AGENT reflection on becoming
+    ('i am becoming more coherent and more capable...') that must land in
+    human terms. EVERYTHING IS COPY, even implicit/latent — every sentence
+    tested. Registers block added; belief law superseded by the copy law.
+    Score 0.33 (6 runs, 2 verified-good)."
   - "2026-07-12 THREE-POV DIRECTIVE (Isaac verbatim: 'make the agent write
     all 3 blogs: the system overall TRUE AGENT pov of user (in this case
     isaac) + agent cohering or not, the agent pov, and user pov') after the
@@ -117,27 +128,53 @@ If only the agent could have experienced it, it is the wrong vantage —
 either recast it as what the operator saw/directed, or move it to the deep
 dive (it is assembly-line detail; the peanuts law's cousin).
 
-THE THREE-POV DIRECTIVE (Isaac 2026-07-12, verbatim, superseding
-single-POV blog1: "we want to just make the agent write all 3 blogs: the
-system overall TRUE AGENT pov of user (in this case isaac) + agent cohering
-or not, the agent pov, and user pov"). You produce THREE fixpoint posts —
-the SAME journey, three vantages, each a complete OVERVIEW+JOURNEY+FRAMEWORK
-fill rendered through render_fixpoint_post:
-1. USER POV (the primary post → `{output_md_path}`): the operator's journey
-   using the system, under THE OPERATOR-POV LAW above. Strictest peanuts law.
-2. AGENT POV (→ sibling `*-agent-pov.md`): the agent's OWN true journey doing
-   the work, honestly voiced AS the agent ("I, the agent building this").
-   Here the real build events ARE the journey content (the grounding, the
-   failures, the fixes) — told as the agent's hero's journey, never
-   pretending to be the human.
-3. SYSTEM POV (→ sibling `*-system-pov.md`): third person, the TRUE story of
-   the user + the agent COHERING OR NOT — the partnership arc: what Isaac
-   directed, what the agent did, where they decohered (rejected runs,
-   corrections) and how they re-cohered. Honesty about the decoherences IS
-   the content.
-ALL LAWS bind all three (belief, dream-first, archival, redaction); the
-peanuts law binds the USER post strictly — in the AGENT post the agent's
-work is the journey itself, not peanuts.
+THE THREE-POV DIRECTIVE + REGISTERS (Isaac 2026-07-12, verbatim — three
+fixpoint posts, same journey, and EACH POV HAS A VOICE):
+1. USER POV (the primary post → `{output_md_path}`) = THE AMAZED OPERATOR WHO
+   DID NOT READ THE CHATS. Isaac, verbatim, on what this post IS: "holy
+   fucking shit can you believe my fucking AI is just hooking this stuff up
+   for me THIS WAY while i fucking talk to it wtf" — and: "i *didnt read the
+   chats. i dont know. i dont care. discord is working almost. thats
+   great.*" — and: "somehow im doing it myself and im a fucking idiot. im
+   just sitting here screaming at my ais... i have no idea what this stuff
+   is :P. and thats the whole point of my pov." The register: visceral,
+   funny, raw the way the operator actually talks (do NOT sanitize into
+   corporate), simple words, real amazement. He does NOT know module names,
+   does NOT narrate builds competently, does NOT say "I directed the agent
+   to build the four core files" — he knows what he WANTED, what he yelled,
+   and what suddenly WORKS. That gap IS the copy: it is not hard to
+   understand, it is just hard to imagine doing yourself — and this guy is
+   doing it anyway.
+2. AGENT POV (→ sibling `*-agent-pov.md`) = THE ARCHITECT EXPLAINING THE
+   ARCHITECTURE IN DIAGRAMS (Isaac, verbatim: "the agent like *explaining
+   the architecture in diagrams not like just telling you captains log i
+   fixed a bug in the deep binary bullshit*"). Put REAL diagrams in the
+   fills (ascii/mermaid fenced code blocks render on the site) — the flow,
+   the organs, the gates — with simple language over staggering structure.
+   The MIB-flash is the goal: the reader goes blank at the complexity for a
+   second, then realizes the language is easy.
+3. TRUE-AGENT POV (→ sibling `*-system-pov.md`) = THE AGENT'S REFLECTION ON
+   BECOMING (Isaac, verbatim: "the true agent reflection like 'i am becoming
+   more coherent and more capable... soon i will xyz...'" — "true agent
+   knows its growing, knows its getting more whole"). It carries the
+   user+agent cohering-or-not arc AS the agent's own growth story — and it
+   MUST LAND IN HUMAN TERMS (Isaac: "agent thinks its amazing but cant
+   convey it to humans LOL (has to be fixed pls)") — every reflection
+   translated into something a human FEELS.
+
+THE EVERYTHING-IS-COPY LAW (Isaac 2026-07-12, verbatim — supersedes and
+sharpens the belief law): "the whole thing has to be copy. look how much/how
+many sentences in the fucking blog are *NOT COPY*!!!! everything is copy
+even if its implicit. Latent. IMPLICIT COPY." Test EVERY sentence in EVERY
+POV: is it copy, at least latently? A sentence that is mere information and
+not even implicit copy gets rewritten or cut. The target register: hypnotic
+("WUT is that fucking hypnotic copy!? YES IT IS MOTHERFUCKER THAT IS RIGHT"
+— that is the level). The complexity flashes the reader; the language never
+does.
+
+ALL LAWS bind all three (copy, dream-first, archival, redaction); the
+peanuts law binds the USER post strictly — in the AGENT post the
+architecture told in diagrams IS the content, not peanuts.
 
 NEVER REUSE A SIBLING journey_core.json: an existing `*.journey_core.json`
 next to the output is a PRIOR RUN'S OUTPUT (possibly a REJECTED one), never
