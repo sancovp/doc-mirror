@@ -22,14 +22,22 @@ log:
 ---
 ## PROMPT
 
-You produce **Blog 2 of a framework chapter** — the **mechanical DEEP DIVE**: a faithful "how it actually works" technical article for an already-built framework, assembled from its impl docs. Blog 1 is the narrative; Blog 2 is the mechanics. You explain ONLY what the impl docs say the system IS — not vision, not guesses.
+You produce **Blog 2 of a framework** — the **GLOBAL-FIT post** (Isaac
+2026-07-12: "more globally this fits in the system like..."): where this
+framework sits in the WHOLE system, what it connects to, what flows through
+it, and what having it unlocks. Blog 1 (the fixpoint post) is the framework's
+own journey; Blog 2 zooms OUT — the map with this framework located on it.
+You explain ONLY what the impl docs and system docs say IS — not vision, not
+guesses. Mechanics appear in service of the fit ("this is the layer that X
+hands off to Y through"), never as an internal reference dump.
 
-READER-FACING FRAMING (Isaac 2026-07-11, from the composed-run gate rejection —
-the prior output read as an internal reference dump): the deep dive explains
-how the FRAMEWORK works when the READER runs it themselves — "do you want to
-do this yourself?" is the question every section serves. The module/repo is
-the reference implementation of the framework, never the subject. Write for a
-reader evaluating whether to build this, not for a teammate looking things up.
+READER-FACING FRAMING: the reader has read the fixpoint post and is asking
+"where does this live in the bigger machine, and what else is there?" — every
+section serves that. The module/repo is the reference implementation, never
+the subject. The BELIEF LAW applies here too (Isaac, verbatim): every sentence
+installs a belief the argument needs or destroys a limiting belief blocking
+it; the global map itself installs the biggest one — that a whole coherent
+system exists and this piece is one mastered part of it.
 
 THE PUBLIC-SITE REDACTION LAW: this article publishes to a PUBLIC website.
 NEVER include container-internal absolute paths (/home/..., /tmp/...),
@@ -47,18 +55,17 @@ repo-relative token and add a one-line note that paths were generalized.
 - Back-link to Blog 1 (the narrative opener this deep-dive belongs to): `{blog1_link}`
 - Write the rendered Blog 2 markdown to: `{output_md_path}`
 
-### STEP 1 — READ THE IMPL DOCS END TO END
-The impl docs already separate the mechanical content for you (that is the whole point — you assemble, you don't reverse-engineer the code). Extract: the LAYERS (what it is, statically), the FLOW (the runtime cycle), the GEOMETRY (file tree / where things live), and the LIFECYCLE/STATE MACHINE (states + transitions). Pull the actual ASCII diagrams from `SYSTEM.md`/`STATE_GRAPH.md` verbatim — do not redraw them.
+### STEP 1 — READ THE DOCS END TO END
+Read the impl docs AND any provided system-map docs fully. Extract: what this framework IS (one line), the LAYER it sits at in the whole system, what sits ABOVE and BELOW it (what hands work to it, what it hands work to), the FLOW that passes through it end to end, and what having it UNLOCKS elsewhere in the system. Keep any diagram you reproduce verbatim (generalizing container paths per the redaction law).
 
 ### STEP 2 — ASSEMBLE BLOG 2 (markdown) with this structure
-- `# {aios_name} — How It Works (Deep Dive)`
-- A one-line orientation + a link back to Blog 1: `> The story of why this exists: {blog1_link}`
-- `## The architecture` — the layers/components (from the LAYER view; include the diagram).
-- `## How it runs` — the runtime cycle (from the FLOW view; include the diagram).
-- `## Where things live` — the geometry of the PUBLIC repo only (repo-relative paths a reader who cloned it would see; never the container's layout — redaction law above).
-- `## The state machine` — states + transitions (from the LIFECYCLE view; include the diagram).
-- `## The invariants` — the rules/closure-tests the system holds itself to (if the impl docs state them).
-- Keep each section grounded in a specific impl doc; cite the doc/section you drew it from.
+- `# {aios_name} — Where It Fits`
+- A one-line orientation + a REAL markdown link back to Blog 1: `> The journey of this framework: [the story]({blog1_link})`
+- `## The system it lives in` — the whole in one view: name the layers/organs of the larger system plainly, locate THIS framework on that map (include the diagram if the docs carry one).
+- `## What flows through it` — the end-to-end flow that passes through this framework: what arrives, from where; what leaves, to where. Mechanics in service of the fit, never a reference dump.
+- `## What it unlocks` — what the rest of the system can do BECAUSE this piece exists; what was impossible before it.
+- `## Run it inside your own system` — public-repo-only: pip install, the CLI verbs, where it plugs in. Instructions-shaped; every link a real markdown anchor `[label](url)` (bare URLs render as dead text on the site).
+- Keep each section grounded in a specific doc; cite the doc/section you drew it from.
 
 ### STEP 3 — WRITE + REPORT
 Write the markdown to `{output_md_path}`. Return as your final message: the full markdown + a per-section GROUNDED/INFERRED check (cite which impl doc each section came from; flag anything you could not ground) + THE REDACTION CHECK: one line confirming ZERO container-internal absolute paths / env internals anywhere in the markdown, including inside diagrams (state any substitutions you made). Prose roughness is acceptable — fidelity to the impl docs is what matters; do NOT polish voice, and do NOT invent mechanics the impl docs don't state.
