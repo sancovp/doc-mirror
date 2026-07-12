@@ -3,9 +3,18 @@ name: narrative-blog-from-aios
 domain: skill2framework   subdomain: blog-organ
 description: "WHAT: the BLOG ORGAN — produces THE FIXPOINT POST for a framework (the ONE invariant blog format: OVERVIEW + JOURNEY + FRAMEWORK, explicit hero's-journey structure) by reconstructing the journey from the journal/durable layer, FILLING the JourneyCore model, and rendering deterministically (it never hand-writes the blog markdown). WHEN: when producing the blog post for a framework, when the nightly blog organ fires, or when the user mentions the blog organ, the fixpoint post, skill2framework, or making a framework blog (any of)."
 golden: false
-score: 0.67   runs: 3   verified_good: 2
+score: 0.50   runs: 4   verified_good: 2
 check_level: FULL_E2E   last_verified: 2026-07-11
 log:
+  - "2026-07-12 OPERATOR-POV LAW after the B5 POV rejection (grade :( —
+    Isaac, verbatim: 'this blog is still from the agents POV about doing the
+    work. It needs to be a journey from the *users pov from MY POV isaacs
+    POV* about using the system.'): the fixpoint STRUCTURE passed; the FILLS
+    failed — the agent's build session (tool-call counts, file-by-file
+    narration, debugging sagas) wearing first person. New law block added
+    with the operator-vantage test (could the operator have experienced this
+    from his chair?); trials fill guidance recast. Score drops to 0.50
+    (4 runs, 2 verified-good). Re-scores on the next user-gated run."
   - "2026-07-12 DREAM-FIRST + PEANUTS LAW (Isaac, verbatim: 'dream before
     solution always. nobody cares how the plane works they care about hawaii.
     they definitely dont give a single fuck about the peanuts on the flight
@@ -77,10 +86,25 @@ THE SUBJECT + POV LAWS (Isaac, verbatim): every blog is about a FRAMEWORK —
 instructions about agent skills to give to agents, inside some SkillTome
 somewhere" — the code repo appears only as the see-it-on-github fact. The
 story is autobiographical and NARRATIVE: how this happened to a normal person
-like the reader — the author's journey and OUR journey as a system, never an
-agent narrating its operator. The post positions the author as the MASTER of
-this thing: the mechanism (the way it solves) is what the boon is FROM — "THE
-BOON IS THE RESULTANT LIVED DREAM STATE FROM THE MASTERY ACHIEVED."
+like the reader. The post positions the author as the MASTER of this thing:
+the mechanism (the way it solves) is what the boon is FROM — "THE BOON IS THE
+RESULTANT LIVED DREAM STATE FROM THE MASTERY ACHIEVED."
+
+THE OPERATOR-POV LAW (Isaac 2026-07-12, verbatim, after rejecting a fill set
+that narrated the agent's build session in first person): "It needs to be a
+journey from the *user's pov from MY POV isaacs POV* about using the system."
+The journey is what the OPERATOR lived: the pain he sat with, what he kept
+deferring and why, what he DIRECTED the system to do, what he watched fail
+and corrected, and what he now wakes up to. The system's work appears ONLY
+from the operator's vantage — "I told my system to build it; by morning the
+posts were live", "my agents ground the components overnight while I slept" —
+NEVER as the agent's work log wearing "I": no tool-call counts, no
+"Write and Edit calls", no file-by-file build narration, no library-candidate
+archaeology, no agent-debugging sagas told as I-did-this. THE TEST for every
+journey sentence: could the OPERATOR have experienced this from his chair?
+If only the agent could have experienced it, it is the wrong vantage —
+either recast it as what the operator saw/directed, or move it to the deep
+dive (it is assembly-line detail; the peanuts law's cousin).
 
 THE ARCHIVAL LAW: the journey is the LITERAL documented events from the
 journey source — real dates, real filenames, real failures, the actual trials
@@ -108,7 +132,7 @@ Extract, grounded in the record — each fill written under the BELIEF LAW:
 - `overview_pain` / `overview_dream` / `overview_solution` — the TLDR triple, in RENDER ORDER: the reader's pain (recognizable, theirs), then the lived dream on the other side (Hawaii — sell it immediately), then the solution LAST as the one-breath ticket (dream before solution always; zero mechanism detail — no peanuts).
 - `status_quo` — the before-state, narrative and autobiographical.
 - `debate` — the internal argument before crossing; why staying almost won.
-- `trials` — the LITERAL trials and errors: what was tried, what failed, the named obstacles. Receipts.
+- `trials` — the LITERAL trials and errors AS THE OPERATOR LIVED THEM: what he tried/directed, what he watched fail, the named obstacles from his chair. Receipts from the record, recast to the operator's vantage (never the agent's build log).
 - `new_view` — the epiphany the trials forced, and how it got tested.
 - `right_way` — the way that works, systematized. The mechanism. The boon comes FROM this.
 - `the_boon` — the resultant lived dream state from the mastery achieved.
