@@ -219,6 +219,15 @@ for core, path in ((user_core, out),
 ```
 `render_fixpoint_post` raises listing any missing fixpoint field — fill the field from the record and re-run; never work around it. If an import fails, REPORT THE EXACT ERROR — do not hand-write the blog. A FAILED BASH COMMAND IS NOT A BLOCKER: fix the command and run it again.
 
+THE MISSING-FRAMEWORK CHECK (Isaac 2026-07-12, verbatim teaching: "wait an
+organ is like this cool agent thing this is a technology... it needs its own
+post... do we have a framework for organs?" no? "-> make it"): every
+load-bearing TECHNOLOGY TERM a post uses (organ, Heart tick, node, skill,
+persona...) either LINKS to its own framework post at first mention (a real
+markdown anchor — weave it into the fill text) or gets named in your report
+as NEEDS-ITS-OWN-FRAMEWORK-POST. A term the reader cannot follow is a hole
+in the funnel; the corpus grows by each post naming what it leans on.
+
 ### STEP 3 — REPORT (return this as your final message)
 1. The exact path written + the FULL rendered markdown.
 2. THE BELIEF CHECK: for each section, one line — which belief it installs or destroys.
