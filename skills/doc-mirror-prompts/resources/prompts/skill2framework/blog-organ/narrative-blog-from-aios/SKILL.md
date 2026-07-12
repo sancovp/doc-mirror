@@ -181,8 +181,14 @@ Extract, grounded in the record — each fill written under the BELIEF LAW:
 - `hook` — AUTHORED: one clean opening sentence that installs the first belief.
 - `demo_description`, `hashtags`, links (`github_url`/`plugin_url` = `{plugin_repo_url}`).
 
-### STEP 2 — WRITE THE FILL SCRIPT TO A FILE, THEN RUN IT
-Write the script to /tmp/fill_fixpoint.py using a quoted heredoc
+### STEP 2 — WRITE THE FILL SCRIPTS, ONE POV AT A TIME
+WORK ONE POV PER PASS — draft the USER-POV fills, write its script, RUN it,
+confirm its artifact exists, and ONLY THEN draft the next POV (agent, then
+system). NEVER draft all three POVs before writing anything: a run died with
+its ENTIRE token budget burned inside one thinking pass drafting all three —
+zero writes. Short thinking, write early, one POV per script run (write
+three small scripts, or extend and re-run one file three times).
+Write each script to /tmp/fill_fixpoint.py using a quoted heredoc
 (`cat > /tmp/fill_fixpoint.py <<'PYEOF'` ... `PYEOF`), then run
 `python3 /tmp/fill_fixpoint.py`. NEVER use multiline `python3 -c` — it DIES
 with a bash syntax error in this harness (a run was lost exactly this way).
