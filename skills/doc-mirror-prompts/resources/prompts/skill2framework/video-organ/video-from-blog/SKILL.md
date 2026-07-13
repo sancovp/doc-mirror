@@ -38,8 +38,14 @@ Blog post -> Script -> TTS Audio + Timing -> Diagrams -> Remotion Composition ->
 
 ### Step 0 — EQUIP THE VIDEO PRODUCTION SKILLS (MANDATORY — before any other step)
 
+**THE ONE-DIRECTORY LAW (Isaac 2026-07-13, verbatim: the agent "MUST WORK IN ONLY THIS ONE
+DIRECTORY"): ALL video work happens inside `/tmp/remotion-test/` — the one place that has the
+remotion rules, the video-assembly skill surfaces, the working project, and the exemplars. You
+never build a video anywhere else; the finished `final.mp4` is copied to `{out_dir}` at the end.**
+
 We HAVE video production skills. You do NOT zero-shot video technique from your own head — you read
-the skills and follow them. Read these files IN FULL, in this order, before writing a single line of
+the skills and follow them. **NEVER develop or even use Remotion without them — FROM THE START,
+period.** Read these files IN FULL, in this order, before writing a single line of
 script or composition code:
 
 1. `/tmp/heaven_data/skills/remotion-video-production/SKILL.md` — the core production system:
@@ -131,8 +137,12 @@ Collect all PNGs into the remotion project's `public/diagrams/`.
 ### Step 4 — Remotion Composition
 
 **THE ANIMATION LAW (Isaac 2026-07-13, after grading a static-card render "a powerpoint not a fully
-animated video"): every scene must be FULLY ANIMATED, per the skills you read in Step 0. A static
-slide that fades in and slow-zooms is a FAILED scene — that is a powerpoint, not a video.** Concretely:
+animated video", then a second render the same way — his mandate, verbatim: "animate every single
+mentioned thing as it is mentioned"): every THING the narration mentions — a node, a wall, a limit,
+a thread, a file, a reset — APPEARS as a drawn, moving element AT THE MOMENT its word is spoken, and
+TRANSFORMS as the sentence acts on it. Typography reacting to narration is NOT this — the mentioned
+THING itself must be on screen as an animated element. A static slide that fades in and slow-zooms
+is a FAILED scene — that is a powerpoint, not a video.** Concretely:
 - Every element ENTERS with real motion (spring/interpolate position+opacity+scale — see
   `rules/animations.md` + `rules/timing.md`), staggered per element, never all-at-once.
 - Text animates per the typography patterns (`rules/text-animations.md`) — word/line reveals timed to
