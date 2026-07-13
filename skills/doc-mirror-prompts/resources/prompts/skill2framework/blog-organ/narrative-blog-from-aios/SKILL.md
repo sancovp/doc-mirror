@@ -6,6 +6,15 @@ golden: false
 score: 0.33   runs: 6   verified_good: 2
 check_level: FULL_E2E   last_verified: 2026-07-11
 log:
+  - "2026-07-13 GAS PROOF SLOTS ADDED (phase-A slop E2E hookup; Isaac: 'GAS
+    proofs / even just copying the proof slots will help'): three OPTIONAL
+    JourneyCore fields copied from the GAS cert ladder (foundation.pl) —
+    grand_argument_claim + premises (each 'premise|receipt', receipts real
+    and dated per the archival law) + theme ('in order to X, you must learn
+    Y') — rendered as a visible THE RECEIPTS section between JOURNEY and
+    FRAMEWORK, ONLY when present (partial proof fill raises; absent =
+    section absent). Binds in all three POVs, each from its own vantage.
+    Renderer: _render_receipts_section in cave_unicorn.journey_suite."
   - "2026-07-12 THE REGISTERS + EVERYTHING-IS-COPY (Isaac, verbatim, grading
     the 3-POV triple): user POV was still too competent/informed — the real
     register is the amazed operator who DID NOT READ THE CHATS ('holy
@@ -230,6 +239,27 @@ Extract, grounded in the record — each fill written under the BELIEF LAW:
 - `build_time` — the grounded N ("build this yourself in N") from the record. Never fabricated.
 - `hook` — AUTHORED: one clean opening sentence that installs the first belief.
 - `demo_description`, `hashtags`, links (`github_url`/`plugin_url` = `{plugin_repo_url}`).
+
+THE GAS PROOF SLOTS (optional trio — fill them whenever the record supports
+real receipts; Isaac 2026-07-13: "GAS proofs / even just copying the proof
+slots will help"). These render as a visible THE RECEIPTS section between THE
+JOURNEY and THE FRAMEWORK, and they bind in ALL THREE POVs — each POV's
+receipts come from ITS OWN vantage (user: what the operator saw from his
+chair; agent: the architecture facts and gates; true-agent: its own growth
+evidence in human terms):
+- `grand_argument_claim` — the ONE claim the whole post argues (the thesis
+  the receipts prove).
+- `premises` — a LIST, each entry the string `premise|receipt`: the premise
+  sentence, a `|`, then the receipt — a REAL dated event / file / quote from
+  the journey source that instantiates the premise (the archival law binds
+  hardest here: a fabricated receipt is the worst possible violation).
+- `theme` — the lesson the argument proves, in the "in order to X, you must
+  learn Y" form.
+FILL DISCIPLINE: claim + premises go together (the renderer REJECTS a partial
+proof fill — one without the other, or theme floating alone, raises); every
+premise entry MUST carry its `|receipt`; if the record cannot ground real
+receipts for a POV, leave ALL THREE unset in that POV's core — the section
+simply does not render (absent = absent, never padded).
 
 ### STEP 2 — WRITE THE FILL SCRIPTS, ONE POV AT A TIME
 WORK ONE POV PER PASS — draft the USER-POV fills, write its script, RUN it,
