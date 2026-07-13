@@ -127,55 +127,39 @@ python3 /tmp/heaven_data/skills/tts-audio-gen/scripts/generate_tts.py scene1 --i
 ```
 This produces MP3s + timing.json with frame-accurate durations. Frame durations come from timing.json — never hardcode.
 
-### Step 3 — Diagrams
-Reuse the blog's rendered images from `{images_dir}` where they fit. For any scene that needs a NEW diagram: write rich colored `.excalidraw` JSON (ALL labels as standalone text elements), render it:
+### Step 3 — FILL THE BASE TEMPLATE (you do NOT author a composition — the base guarantees the animation)
+
+**You do NOT write React or design motion. The animation is already built and proven, in the BASE at
+`/tmp/remotion-test/src/base/`.** Your entire job is to produce ONE data file — a `ShotList` — that the
+base renders into a fully-animated video. Because every visual kind in the base is motion by construction,
+"animate every single mentioned thing as it is mentioned" (Isaac's law) is ENFORCED BY THE CODE, not by
+your discipline. A powerpoint is literally not expressible in this system.
+
+1. **READ the base FIRST, in full, in this order:**
+   - `/tmp/remotion-test/src/base/README.md` — the map.
+   - `/tmp/remotion-test/src/base/types.ts` — the `ShotList` schema, the canonical GAS/JourneyCore segment
+     spine (`HOOK → STAKES → THEME → TURN → CLAIM → RECEIPT → PAYOFF → LESSON → CTA`), and the `Visual` menu.
+   - `/tmp/remotion-test/src/base/example.ts` — the WORKED example (the doc-mirror video). Copy its shape.
+2. **Write your shot list** as `src/base/<slug>.ts`, exporting a `ShotList` exactly like `example.ts`:
+   for EACH sentence of your script (Steps 1–2), make a `Beat` — the sentence in `line`, its
+   `frames`/`startFrame` from the TTS `timing.json`, and a `visual` from the menu that DEPICTS what the
+   sentence mentions (a limit → `bar`; things lost → `node-network` action `snap`; a mechanism →
+   `diagram`; before/after → `split-diff`; evidence/a receipt → `receipt`; a hard word → `stamp`;
+   subscribe → `channel`). Group sentences into segments by canonical role. Fill `meta` (GAS `theme` +
+   `claim` + `brand: "Aisaac"`). Use the `seg()` builder from `example.ts` so you do not hand-count frames.
+3. **Point the renderer at it:** edit `src/base/Root.tsx` so `shotList` imports your export.
+   Audio: put your per-segment mp3s under `public/audio/<slug>/` and set each segment's `audio` path
+   relative to `public/`.
+4. **Do NOT modify** anything else under `src/base/` (types/primitives/Visual/VideoFromShotList are the
+   guaranteed engine). If a sentence seems to need a visual the menu lacks, pick the closest kind — do
+   NOT invent a new primitive in a run; note it for the base's maintainer instead.
+
+### Step 4 — Render
 ```bash
-python3 {render_script} input.excalidraw output.png
+cd /tmp/remotion-test && npx remotion render src/base/Root.tsx AisaacVideo --output {out_dir}/final.mp4
 ```
-Collect all PNGs into the remotion project's `public/diagrams/`.
-
-### Step 4 — Remotion Composition
-
-**THE ANIMATION LAW (Isaac 2026-07-13, after grading a static-card render "a powerpoint not a fully
-animated video", then a second render the same way — his mandate, verbatim: "animate every single
-mentioned thing as it is mentioned"): every THING the narration mentions — a node, a wall, a limit,
-a thread, a file, a reset — APPEARS as a drawn, moving element AT THE MOMENT its word is spoken, and
-TRANSFORMS as the sentence acts on it. Typography reacting to narration is NOT this — the mentioned
-THING itself must be on screen as an animated element. A static slide that fades in and slow-zooms
-is a FAILED scene — that is a powerpoint, not a video.** Concretely:
-- Every element ENTERS with real motion (spring/interpolate position+opacity+scale — see
-  `rules/animations.md` + `rules/timing.md`), staggered per element, never all-at-once.
-- Text animates per the typography patterns (`rules/text-animations.md`) — word/line reveals timed to
-  the narration, not a paragraph pasted on screen.
-- Consecutive scenes are joined with real TRANSITIONS (`rules/transitions.md` / TransitionSeries),
-  never hard cuts between still frames.
-- Diagrams are REVEALED progressively (elements appearing as the narration reaches them — the
-  DiagramExplainer pattern), not shown whole while the camera zooms.
-- Something must be MOVING on screen at all times; if a sentence's visual has no motion for its whole
-  duration, redesign that beat.
-
-**THE SHOT LIST COMES FIRST (the discipline that enforces the law).** Before writing ANY composition
-code, author `{out_dir}/SHOT_LIST.md` in the exact shape of the exemplar at
-`/tmp/remotion-test/SHOT_LIST.md`: a table per scene — frame timing | the script sentence | the
-VISUAL ACTION for that sentence, described with capitalized MOTION VERBS (APPEARS, MULTIPLY, TANGLE,
-SLIDES, STRETCH, SNAP, ORBIT...). Every sentence gets its own action. A sentence whose "action" is
-"text on screen" or "same image, camera zooms" is a powerpoint slide — redesign it before coding.
-The composition then IMPLEMENTS the shot list; the shot list is the spec the frames are checked
-against.
-
-The remotion project lives at `/tmp/remotion-test/`. Build React components in `src/compositions/` (DiagramExplainer for animated diagrams, InsightCard for key quotes, SectionHeader for transitions). Use timing.json to set exact frame durations per sentence; reference diagrams via `staticFile('diagrams/name.png')`; wire the scene MP3s as the audio track.
-
-### Step 5 — Render
-```bash
-cd /tmp/remotion-test && npx remotion render src/index.ts CompositionName --output {out_dir}/segment1.mp4
-```
-Render each segment. A render error is fixed and re-run — never skipped.
-
-### Step 6 — Assembly
-One segment: copy it to `{out_dir}/final.mp4`. Multiple segments:
-```bash
-ffmpeg -y -i segment1.mp4 -i segment2.mp4 -filter_complex '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]' -map '[outv]' -map '[outa]' {out_dir}/final.mp4
-```
+Duration/fps/size come from the shot list. A render error is fixed and re-run — never skipped. One render,
+one file — the base composes all segments + audio + the persistent GAS spine itself (no ffmpeg assembly step).
 
 ### Hard constraints
 - The deliverable is `{out_dir}/final.mp4` — verify it exists and plays (`ffprobe {out_dir}/final.mp4` exits 0) before you finish. No final.mp4 = the run failed, say so plainly.
