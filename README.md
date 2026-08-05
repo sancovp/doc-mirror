@@ -2,9 +2,9 @@
 
 <!-- SCALABLE-PUBLISHING:AUTOGEN START (managed block — do not edit between these markers) -->
 
-![Stars](https://img.shields.io/github/stars/sancovp/doc-mirror.svg?style=social) ![Updated](https://img.shields.io/badge/updated-2026_08_03-lightgrey.svg)
+![Stars](https://img.shields.io/github/stars/sancovp/doc-mirror.svg?style=social) ![Updated](https://img.shields.io/badge/updated-2026_08_04-lightgrey.svg)
 
-⭐ 0 stars • 🕑 Updated 2026-08-03
+⭐ 0 stars • 🕑 Updated 2026-08-04
 
 📦 Auto-published from the monorepo • [CHANGELOG](./CHANGELOG.md) • [sancovp/doc-mirror](https://github.com/sancovp/doc-mirror)
 
