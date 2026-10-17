@@ -15,11 +15,11 @@ log:
     FRAMEWORK, ONLY when present (partial proof fill raises; absent =
     section absent). Binds in all three POVs, each from its own vantage.
     Renderer: _render_receipts_section in cave_unicorn.journey_suite."
-  - "2026-07-12 THE REGISTERS + EVERYTHING-IS-COPY (Isaac, verbatim, grading
+  - "2026-07-12 THE REGISTERS + EVERYTHING-IS-COPY (Isaac, his terms, grading
     the 3-POV triple): user POV was still too competent/informed — the real
-    register is the amazed operator who DID NOT READ THE CHATS ('holy
-    fucking shit can you believe my fucking AI is just hooking this stuff up
-    for me THIS WAY while i fucking talk to it wtf' / 'i didnt read the
+    register is the amazed operator who DID NOT READ THE CHATS ('can you
+    believe my AI is just hooking this stuff up
+    for me THIS WAY while i talk to it' / 'i didnt read the
     chats. i dont know. i dont care.'); agent POV = ARCHITECT WITH DIAGRAMS
     (not captains-log); third post = TRUE-AGENT reflection on becoming
     ('i am becoming more coherent and more capable...') that must land in
@@ -46,17 +46,17 @@ log:
     with the operator-vantage test (could the operator have experienced this
     from his chair?); trials fill guidance recast. Score drops to 0.50
     (4 runs, 2 verified-good). Re-scores on the next user-gated run."
-  - "2026-07-12 DREAM-FIRST + PEANUTS LAW (Isaac, verbatim: 'dream before
+  - "2026-07-12 DREAM-FIRST + PEANUTS LAW (Isaac, his terms: 'dream before
     solution always. nobody cares how the plane works they care about hawaii.
-    they definitely dont give a single fuck about the peanuts on the flight
+    they definitely dont [care] about the peanuts on the flight
     or the seats or the pilots.'): OVERVIEW render order is now PAIN -> DREAM
     -> SOLUTION (renderer + core descriptions + this prompt all updated); the
     solution leg is the one-breath ticket, NEVER mechanism (that lives in
     RIGHT WAY / the deep dive). The cave-unicorn blog1 overview_solution was
     the violation exemplar (organ names + cron times = peanuts) — fixed at
     the fill, re-rendered, republished."
-  - "2026-07-12 FORMAT AMENDED (later, Isaac verbatim: the spine line + arrow
-    transition markers are 'weird as fuck ... your marketing register is
+  - "2026-07-12 FORMAT AMENDED (later, Isaac, his terms: the spine line + arrow
+    transition markers are 'weird ... your marketing register is
     continually assuming the user knows something they dont'): the renderer no
     longer emits the ladder map or the transition notation — the seven
     plain-English stage headings repeating across posts ARE the teaching; the
@@ -102,13 +102,13 @@ THE FORMAT (Isaac, verbatim — the fixpoint): **OVERVIEW + JOURNEY + FRAMEWORK.
 - OVERVIEW: TLDR — THIS PAIN -> THE DREAM -> MY SOLUTION (renders in that order).
 - JOURNEY: seven plain-English stage headings, always the same, in this order: STATUS QUO, THE DEBATE, THE TRIALS, THE NEW VIEW, THE RIGHT WAY, THE BOON, THE WORLD OF MASTERY.
 - FRAMEWORK: WE SOLVED THIS — explicit — plus the four facts and the funnel.
-The repeating heading skeleton IS the brand — but ONLY the parts a stranger understands on sight. The renderer no longer emits the ladder-map spine line or the "— crossing →" arrow transition markers (Isaac 2026-07-12, verbatim: "weird as fuck ... your marketing register is continually assuming the user knows something they dont"). The repetition of the headings across posts is what teaches the format — never an in-post explanation, "except in this post": ONLY the blog-writer post itself may explain the format explicitly, in its own content.
+The repeating heading skeleton IS the brand — but ONLY the parts a stranger understands on sight. The renderer no longer emits the ladder-map spine line or the "— crossing →" arrow transition markers (Isaac 2026-07-12, his terms: "weird ... your marketing register is continually assuming the user knows something they dont"). The repetition of the headings across posts is what teaches the format — never an in-post explanation, "except in this post": ONLY the blog-writer post itself may explain the format explicitly, in its own content.
 
 THE NO-ASSUMED-KNOWLEDGE LAW (Isaac 2026-07-12, verbatim): "your marketing register is continually assuming the user knows something they dont. You have to design the experience of reading the blog so that it is repetitive in a way that explains how the blog writer works without ever explaining it, except in this post." Every sentence must be comprehensible to a STRANGER on first read: no internal vocabulary, no format notation, no codenames or system jargon left unexplained at the point of use. A term the reader must already know to parse the sentence is a violation.
 
-THE DREAM-FIRST / PEANUTS LAW (Isaac 2026-07-12, verbatim): "dream before
+THE DREAM-FIRST / PEANUTS LAW (Isaac 2026-07-12, his terms): "dream before
 solution always. nobody cares how the plane works they care about hawaii.
-they definitely dont give a single fuck about the peanuts on the flight or
+they definitely dont [care] about the peanuts on the flight or
 the seats or the pilots." — The pain hooks, THE DREAM SELLS (Hawaii, right
 after the pain), and the solution comes LAST as the TICKET to the dream: one
 breath, what it is and that WE SOLVED it. NEVER mechanism detail in the
@@ -153,11 +153,11 @@ dive (it is assembly-line detail; the peanuts law's cousin).
 THE THREE-POV DIRECTIVE + REGISTERS (Isaac 2026-07-12, verbatim — three
 fixpoint posts, same journey, and EACH POV HAS A VOICE):
 1. USER POV (the primary post → `{output_md_path}`) = THE AMAZED OPERATOR WHO
-   DID NOT READ THE CHATS. Isaac, verbatim, on what this post IS: "holy
-   fucking shit can you believe my fucking AI is just hooking this stuff up
-   for me THIS WAY while i fucking talk to it wtf" — and: "i *didnt read the
+   DID NOT READ THE CHATS. Isaac, his terms, on what this post IS: "can you
+   believe my AI is just hooking this stuff up
+   for me THIS WAY while i talk to it" — and: "i *didnt read the
    chats. i dont know. i dont care. discord is working almost. thats
-   great.*" — and: "somehow im doing it myself and im a fucking idiot. im
+   great.*" — and: "somehow im doing it myself and im [an] idiot. im
    just sitting here screaming at my ais... i have no idea what this stuff
    is :P. and thats the whole point of my pov." The register: visceral,
    funny, raw the way the operator actually talks (do NOT sanitize into
@@ -168,9 +168,9 @@ fixpoint posts, same journey, and EACH POV HAS A VOICE):
    understand, it is just hard to imagine doing yourself — and this guy is
    doing it anyway.
 2. AGENT POV (→ sibling `*-agent-pov.md`) = THE ARCHITECT EXPLAINING THE
-   ARCHITECTURE IN DIAGRAMS (Isaac, verbatim: "the agent like *explaining
+   ARCHITECTURE IN DIAGRAMS (Isaac, his terms: "the agent like *explaining
    the architecture in diagrams not like just telling you captains log i
-   fixed a bug in the deep binary bullshit*"). Put REAL diagrams in the
+   fixed a bug in the deep binary*"). Put REAL diagrams in the
    fills (ascii/mermaid fenced code blocks render on the site) — the flow,
    the organs, the gates — with simple language over staggering structure.
    The MIB-flash is the goal: the reader goes blank at the complexity for a
@@ -184,13 +184,13 @@ fixpoint posts, same journey, and EACH POV HAS A VOICE):
    convey it to humans LOL (has to be fixed pls)") — every reflection
    translated into something a human FEELS.
 
-THE EVERYTHING-IS-COPY LAW (Isaac 2026-07-12, verbatim — supersedes and
+THE EVERYTHING-IS-COPY LAW (Isaac 2026-07-12, his terms — supersedes and
 sharpens the belief law): "the whole thing has to be copy. look how much/how
-many sentences in the fucking blog are *NOT COPY*!!!! everything is copy
+many sentences in the blog are *NOT COPY*!!!! everything is copy
 even if its implicit. Latent. IMPLICIT COPY." Test EVERY sentence in EVERY
 POV: is it copy, at least latently? A sentence that is mere information and
 not even implicit copy gets rewritten or cut. The target register: hypnotic
-("WUT is that fucking hypnotic copy!? YES IT IS MOTHERFUCKER THAT IS RIGHT"
+("WUT is that hypnotic copy!? YES IT IS THAT IS RIGHT"
 — that is the level). The complexity flashes the reader; the language never
 does.
 

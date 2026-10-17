@@ -15,11 +15,11 @@ hand-writes the rendered output — only the fills.
 - (score moves only on the USER GATE — run 3 passed the full commander
   checklist below and is AWAITING Isaac's read; bump on his pass.)
 - log (USER GATE, newest — the real gate): 2026-07-10 Isaac REJECTED both runs'
-  outputs against the format bar, verbatim: "neither of these look like
+  outputs against the format bar, in his terms: "neither of these look like
   JourneyBlog AIDA fractals -- i dont see the links from the framework and the
   journeycore isnt really present correctly, the stories are not ABOUT the
-  literal fucking stuff that happened to me/us... it needs to be
-  ARCHIVAL/ARCHAEOLOGICAL -- LOOK AT WHAT FUCKING HAPPENED TO ME AND FUCKING DO
+  literal stuff that happened to me/us... it needs to be
+  ARCHIVAL/ARCHAEOLOGICAL -- LOOK AT WHAT HAPPENED TO ME AND DO
   YOU WANT TO DO THIS YOURSELF!? thats the whole idea." Three defects: framework
   links absent from the render; the core not correctly present; stories generic
   instead of ARCHIVAL. The ARCHIVAL LAW + links requirement are now in the
@@ -194,8 +194,8 @@ thread inside OUR story, never the frame. Do not narrate the user as an
 external character issuing directives to you; narrate the system's shared
 journey the reader could join.
 
-THE ARCHIVAL LAW (Isaac, verbatim — this is the whole idea): the story must be
-ARCHIVAL/ARCHAEOLOGICAL — "LOOK AT WHAT FUCKING HAPPENED TO ME AND FUCKING DO
+THE ARCHIVAL LAW (Isaac, his terms — this is the whole idea): the story must be
+ARCHIVAL/ARCHAEOLOGICAL — "LOOK AT WHAT HAPPENED TO ME AND DO
 YOU WANT TO DO THIS YOURSELF!?" The sections are ABOUT the literal documented
 events from the deep source: real dates, real filenames, real error messages,
 the actual moment it broke and the actual moment it worked — receipts, not a

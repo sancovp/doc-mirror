@@ -52,7 +52,7 @@ stateDiagram-v2
     ROUTE --> doc_mirror_seework: [phase==seework]   "what's next?" -> read the VIEW, pick a gap, route
     ROUTE --> doc_mirror_change:  [phase==change]    a module changed -> re-derive doc(m) -> commit -> graduate
     ROUTE --> doc_mirror_prompts: [phase==prompt]    need an agent to DO a task -> search/author a prompt-skill
-    ROUTE --> WAIT_open:          [phase==open]      blocked on Isaac — re-echo, docmirror-sleep
+    ROUTE --> WAIT_open:          [phase==open]      NEEDS-ASKING — re-echo, docmirror-sleep
     ROUTE --> SELECT:             [phase==orient/empty]  pick the state whose WHEN matches the situation
     SELECT --> ROUTE: set the cursor phase, then route
     doc_mirror_change --> R_cursor: each state's CoR advances the cursor + calls the next state (loops)

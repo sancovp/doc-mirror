@@ -49,7 +49,7 @@ stateDiagram-v2
     ROUTE --> state_seework: [phase==seework]   call doc-mirror-seework
     ROUTE --> state_change:  [phase==change]    call doc-mirror-change
     ROUTE --> state_prompt:  [phase==prompt]    call doc-mirror-prompts
-    ROUTE --> WAIT_open:     [phase==open]      blocked on Isaac — re-echo open_fork, docmirror-sleep
+    ROUTE --> WAIT_open:     [phase==open]      NEEDS-ASKING — re-echo open_fork, docmirror-sleep
     ROUTE --> SELECT:        [phase==orient/empty]  pick the state whose WHEN matches the situation
     SELECT --> ROUTE: set the cursor phase, then route
     state_change --> R_cursor: each state's CoR advances the cursor + calls the next state (the machine loops)
